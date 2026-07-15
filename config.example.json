@@ -1,0 +1,18 @@
+{
+  "model": {
+    "api_key": "YOUR_DEEPSEEK_API_KEY_HERE",
+    "api_base": "https://api.deepseek.com",
+    "model": "deepseek-v4-flash",
+    "temperature": 0.85,
+    "max_tokens": 500,
+    "models": [
+      "deepseek-v4-flash",
+      "deepseek-v4-pro"
+    ]
+  },
+  "active_profile": "dorm_life",
+  "app": {
+    "user_mode": true,
+    "director_mode": true
+  }
+}

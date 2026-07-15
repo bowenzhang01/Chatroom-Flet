@@ -1,0 +1,24 @@
+{
+  "app": {
+    "title": "星际飞船·探索号",
+    "welcome_title": " 欢迎登舰",
+    "welcome_text": "「探索号」正在穿越猎户座星云～\n 舰桥成员已就位，点击「开始」启动任务！",
+    "director_mode": false,
+    "user_mode": false,
+    "display_name": "星际飞船"
+  },
+  "turn": {
+    "order": [
+      "CaptainRex",
+      "EngineerYuki",
+      "AndroidZoe",
+      "Zeke"
+    ]
+  },
+  "speed": {
+    "default": 3
+  },
+  "world": {
+    "setting": "近未来科幻背景。「探索号」是一艘深空探索飞船，正在穿越猎户座星云执行长期任务。船员们来自不同背景，在封闭的飞船环境中共同生活、执行任务。"
+  }
+}
