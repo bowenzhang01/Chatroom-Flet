@@ -287,7 +287,7 @@ class ProfilesView(ViewBase):
     # ── 角色 ──
     def _section_characters(self) -> ft.Control:
         from app.components.character_card import CharacterCard, AddCharacterCard, AIGenerateCharacterCard
-        chars = [(n, c) for n, c in self.state.characters.items() if n != "You"]
+        chars = [(n, c) for n, c in self.state.characters.items()]
         total = max(1, len(chars))
         cards = []
         for i, (n, c) in enumerate(chars):
@@ -511,20 +511,23 @@ class ProfilesView(ViewBase):
     # ── 角色编辑 ──
     def _edit_character(self, name):
         c = self.state.characters.get(name, {}) if name else {}
-        name_f = ft.TextField(label="英文名（唯一）", value=c.get("name", ""), dense=True)
+        is_you = name == "You"
+        name_f = ft.TextField(label="英文名（唯一）" + ("（不可更改）" if is_you else ""),
+                              value=c.get("name", ""), dense=True, read_only=is_you)
         dname_f = ft.TextField(label="显示名", value=c.get("display_name", ""), dense=True)
         color_f = ft.TextField(label="角色色 (#RRGGBB)", value=c.get("color", "#888888"), dense=True)
+        pers_f = ft.TextField(label="性格", value=c.get("personality", ""), dense=True)
         desc_f = ft.TextField(label="描述", value=c.get("description", ""), multiline=True, min_lines=2, max_lines=4)
         prompt_f = ft.TextField(label="系统提示词", value=c.get("system_prompt", ""), multiline=True,
                                 min_lines=3, max_lines=8)
 
         def _save(e=None):
             data = {
-                "name": name_f.value or dname_f.value or "新角色",
+                "name": "You" if is_you else (name_f.value or dname_f.value or "新角色"),
                 "display_name": dname_f.value or name_f.value or "新角色",
                 "color": color_f.value or "#888888",
                 "bg_color": c.get("bg_color", "#f5f5f5"),
-                "personality": c.get("personality", ""),
+                "personality": pers_f.value or "",
                 "description": desc_f.value or "",
                 "system_prompt": prompt_f.value or "",
             }
@@ -532,13 +535,17 @@ class ProfilesView(ViewBase):
             old_name = name
             try:
                 if old_name and old_name != data["name"]:
-                    self.state.data._delete_character(old_name)
+                    self.state.data._save_character(fname, data)
+                    self.state.data._reload_data()
                     if old_name in self.state.turn_order:
                         idx2 = self.state.turn_order.index(old_name)
                         self.state.turn_order[idx2] = data["name"]
                         self.state.data._save_turn_order()
-                self.state.data._save_character(fname, data)
-                self.state.data._reload_data()
+                    self.state.data._delete_character(old_name)
+                    self.state.data._reload_data()
+                else:
+                    self.state.data._save_character(fname, data)
+                    self.state.data._reload_data()
             except Exception as ex:
                 print(f"[profiles] 保存角色失败: {ex}")
             self._close_dialog()
@@ -546,7 +553,7 @@ class ProfilesView(ViewBase):
 
         dlg = ft.AlertDialog(
             title=ft.Text("编辑角色" if name else "新角色"),
-            content=ft.Column(controls=[name_f, dname_f, color_f, desc_f, prompt_f],
+            content=ft.Column(controls=[name_f, dname_f, color_f, pers_f, desc_f, prompt_f],
                               tight=True, scroll=ft.ScrollMode.AUTO),
             actions=[
                 ft.TextButton("取消", on_click=lambda e: self._close_dialog()),
@@ -557,6 +564,9 @@ class ProfilesView(ViewBase):
 
     def _on_char_menu(self, action: str, name: str):
         if action == "delete":
+            if name == "You":
+                self._snack("用户角色「你」不可删除")
+                return
             def _ok(e=None):
                 try:
                     self.state.data._delete_character(name)
@@ -578,6 +588,9 @@ class ProfilesView(ViewBase):
             )
             self.page.show_dialog(dlg)
         elif action == "duplicate":
+            if name == "You":
+                self._snack("用户角色不可复制")
+                return
             c = dict(self.state.characters.get(name, {}))
             c["name"] = c.get("name", "char") + "_copy"
             c["display_name"] = c.get("display_name", "") + " 副本"
@@ -914,6 +927,17 @@ class ProfilesView(ViewBase):
                     name = c.get("name", "char")
                     c.setdefault("color", "#888888")
                     self.state.data._save_character(name + ".json", c)
+                # 确保 You 存在
+                if "You" not in self.state.characters:
+                    self.state.data._save_character("You.json", {
+                        "name": "You",
+                        "display_name": "你",
+                        "color": "#42a5f5",
+                        "bg_color": "#f0f7ff",
+                        "personality": "你自己",
+                        "description": "就是你自己～一个和大家一起生活的普通人。",
+                        "system_prompt": "你是这个世界的一员，和伙伴们自然地聊天。对话内容用直角引号「」包裹，动作描写用*星号*包裹，例如：*伸了个懒腰*、*笑着拍拍她的肩*。回复简短自然，100-200字。",
+                    })
 
                 pdlg.set_step(3, "正在整理发言顺序…")
                 # 发言顺序

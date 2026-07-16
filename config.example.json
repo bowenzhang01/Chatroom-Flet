@@ -1,6 +1,6 @@
 {
   "model": {
-    "api_key": "YOUR_DEEPSEEK_API_KEY_HERE",
+    "api_key": "",
     "api_base": "https://api.deepseek.com",
     "model": "deepseek-v4-flash",
     "temperature": 0.85,

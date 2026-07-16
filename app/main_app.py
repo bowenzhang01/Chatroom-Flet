@@ -25,8 +25,8 @@ def main(page: ft.Page):
     ui_state.load_theme_mode()
 
     # ── 主题 ──
-    page.theme = build_theme("light")
-    page.dark_theme = build_theme("dark")
+    page.theme = build_theme(ui_state.color_theme_key, "light")
+    page.dark_theme = build_theme(ui_state.color_theme_key, "dark")
     page.theme_mode = ui_state.theme_mode()
 
     # ── 窗口默认 ──

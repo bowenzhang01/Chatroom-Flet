@@ -28,6 +28,7 @@ class APIError(Exception):
 def _parse_error(e: Exception) -> str:
     """解析 HTTP/网络异常，返回人类可读消息"""
     msg = str(e)
+    print(f"[api] 异常类型={type(e).__name__} 消息={msg}")
     if isinstance(e, httpx.HTTPStatusError):
         code = e.response.status_code
         if code == 401:
@@ -45,7 +46,7 @@ def _parse_error(e: Exception) -> str:
     if "connection" in msg.lower() or "refused" in msg.lower():
         return "无法连接 API 服务器，请检查网络和地址"
     if "name resolution" in msg.lower() or "getaddrinfo" in msg.lower():
-        return "无法解析 API 服务器地址"
+        return "无法解析 API 服务器地址（请确认 API 地址正确；WSL 环境请检查 /etc/resolv.conf DNS 配置）"
     return msg[:120]
 
 
@@ -83,6 +84,7 @@ def call_chat_completion(
         api_key = config.API_KEY
     if api_base is None:
         api_base = config.API_BASE
+    api_base = api_base.strip()
     if temperature is None:
         temperature = config.TEMPERATURE
     if max_tokens is None:
@@ -91,10 +93,12 @@ def call_chat_completion(
     if not api_key:
         raise APIError("未配置 API Key")
 
+    url = f"{api_base}/chat/completions"
+    print(f"[api] POST {url} | model={model} | timeout={timeout}s")
     try:
         with httpx.Client(timeout=timeout, verify=False, trust_env=False) as client:
             r = client.post(
-                f"{api_base}/chat/completions",
+                url,
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
@@ -142,6 +146,8 @@ def call_chat_completion_async(
     """
     if api_key is None:
         api_key = config.API_KEY
+    if api_base is None:
+        api_base = config.API_BASE
 
     def _run():
         try:
@@ -183,6 +189,7 @@ def fetch_models(
         api_key = config.API_KEY
     if api_base is None:
         api_base = config.API_BASE
+    api_base = api_base.strip()
 
     try:
         with httpx.Client(timeout=timeout, verify=False, trust_env=False) as client:
@@ -236,6 +243,7 @@ def test_connection_async(
                 api_key = config.API_KEY
             if api_base is None:
                 api_base = config.API_BASE
+            api_base = api_base.strip() if api_base else api_base
             with httpx.Client(timeout=timeout, verify=False, trust_env=False) as client:
                 r = client.get(
                     f"{api_base}/models",

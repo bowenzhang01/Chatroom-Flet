@@ -80,12 +80,10 @@ class AIEngine:
             dname = uc.get('display_name', '你')
             desc = uc.get('description', '一个普通人')
             pers = uc.get('personality', '')
-            pers_line = f"{dname}性格{pers}。" if pers else ""
+            pers_line = f"性格{pers}。" if pers else ""
             user_note = (
-                f"\n\n【关于{dname}】\n"
-                f"{dname}也在场——{desc}。{pers_line}\n"
-                f"{dname}不是旁观者，是和大家一起生活的人。自然地与{dname}说话、互动，\n"
-                f"像对待其他角色一样。不要无视{dname}的存在。"
+                f"\n\n{dname}也在场——{desc}。{pers_line}"
+                f"和其他角色一样对待，自然地与{dname}对话、互动。"
             )
 
         return (
@@ -505,13 +503,17 @@ class AIEngine:
             "1. 生成 3-5 个有性格差异的角色（含名字、英文名、性格、外貌描述、system_prompt）\n"
             "2. 生成 3-6 个场景（时间、地点、场景描述、氛围）\n"
             "3. 给出世界观设定（1-2 句）\n"
-            "4. system_prompt 要详细定义角色人设、语气、表达方式，对话用「」包裹，动作用*星号*\n\n"
+            "4. system_prompt 要详细定义角色人设、语气、表达方式，对话用「」包裹，动作用*星号*\n"
+            "5. 必须包含一个名为\"You\"的用户角色（display_name:\"你\"），代表玩家操控的角色。\n"
+            "   为用户角色设定适合该世界的性格、外貌描述和背景，让玩家有代入感。\n\n"
             "返回纯 JSON，结构如下：\n"
             '{"title":"剧本标题","world":"世界观","scenes":['
             '{"time":"清晨","location":"地点","scene":"描述","mood":"氛围"}],'
             '"characters":[{"name":"Yuki","display_name":"小雪","color":"#7ec8e3",'
-            '"description":"描述","personality":"性格","system_prompt":"详细人设"}],'
-            '"turn_order":["Yuki","Rui"]}\n'
+            '"description":"描述","personality":"性格","system_prompt":"详细人设"},'
+            '{"name":"You","display_name":"你","color":"#42a5f5",'
+            '"description":"描述","personality":"性格","system_prompt":"用户角色人设"}],'
+            '"turn_order":["Yuki","Rui","You"]}\n'
             "只返回 JSON，不要其他文字。"
         )
 
@@ -565,8 +567,6 @@ class AIEngine:
         world_line = f"【世界观】\n{world}\n\n" if world else ""
         char_lines = []
         for name, c in self.app.characters.items():
-            if name == "You":
-                continue
             dname = c.get("display_name", name)
             desc = c.get("description", "") or c.get("personality", "")
             char_lines.append(f"- {dname}: {desc[:40]}")
@@ -639,7 +639,7 @@ class AIEngine:
         scene_lines = [f"- {s.get('time','')}·{s.get('location','')}: {s.get('scene','')[:40]}"
                        for s in (self.app.scenes or [])]
         scene_list = "\n".join(scene_lines) if scene_lines else "(暂无场景)"
-        existing = [c.get("display_name", name) for name, c in self.app.characters.items() if name != "You"]
+        existing = [c.get("display_name", name) for name, c in self.app.characters.items()]
         existing_str = "、".join(existing) if existing else "(无)"
 
         return (
@@ -770,7 +770,7 @@ class AIEngine:
                        for s in (self.app.scenes or [])]
         scene_list = "\n".join(scene_lines) if scene_lines else "(无场景)"
         char_lines = [f"- {c.get('display_name', n)}: {c.get('description','')[:40]}"
-                      for n, c in self.app.characters.items() if n != "You"]
+                      for n, c in self.app.characters.items()]
         char_list = "\n".join(char_lines) if char_lines else "(无角色)"
 
         return (

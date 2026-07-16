@@ -251,7 +251,7 @@ class ChatView(ViewBase):
         )
 
     def _build_character_avatars(self) -> ft.Control:
-        chars = [c for n, c in self.state.characters.items() if n != "You"]
+        chars = [c for n, c in self.state.characters.items()]
         if not chars:
             return ft.Text("暂无角色", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
         total = len(chars)

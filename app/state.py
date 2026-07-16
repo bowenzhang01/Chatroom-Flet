@@ -7,7 +7,7 @@ ChatRoom - Flet Edition · UI 反应式状态
 
 import flet as ft
 
-from app.theme import THEME_MODES
+from app.theme import THEME_MODES, set_color_theme
 
 __all__ = ["UIState"]
 
@@ -18,8 +18,11 @@ class UIState:
     # ── 路由 ──
     route: str = "/chat"
 
-    # ── 主题 ──
+    # ── 主题模式 ──
     theme_mode_key: str = "system"  # light | dark | system
+
+    # ── 色彩主题 ──
+    color_theme_key: str = "aurora"  # aurora | dusk | ocean | star
 
     # ── 响应式断点 ──
     def is_desktop(self, page: ft.Page) -> bool:
@@ -29,15 +32,25 @@ class UIState:
     def theme_mode(self) -> ft.ThemeMode:
         return THEME_MODES.get(self.theme_mode_key, ft.ThemeMode.SYSTEM)
 
-    # ── 持久化主题模式 ──
+    # ── 持久化 ──
     def load_theme_mode(self):
         import config
         ui = config.app_config.setdefault("ui", {})
         self.theme_mode_key = ui.get("theme_mode", "system")
+        self.color_theme_key = ui.get("color_theme", "aurora")
+        set_color_theme(self.color_theme_key)
 
     def save_theme_mode(self):
         import config
         from utils import save_json
         ui = config.app_config.setdefault("ui", {})
         ui["theme_mode"] = self.theme_mode_key
+        save_json(config.BASE_DIR / "config.json", config.app_config)
+
+    def save_color_theme(self):
+        import config
+        from utils import save_json
+        ui = config.app_config.setdefault("ui", {})
+        ui["color_theme"] = self.color_theme_key
+        set_color_theme(self.color_theme_key)
         save_json(config.BASE_DIR / "config.json", config.app_config)

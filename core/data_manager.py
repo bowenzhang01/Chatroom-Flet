@@ -205,23 +205,23 @@ class DataManager:
         app = self.app
         if not app.char_dir:
             return
-        app.characters = {}
-        app.char_styles = {}
+        new_chars = {}
+        new_styles = {}
         if app.char_dir.exists():
             for f in sorted(app.char_dir.glob("*.json")):
                 try:
                     c = json.loads(f.read_text("utf-8"))
-                    app.characters[c["name"]] = c
+                    new_chars[c["name"]] = c
                 except Exception as e:
                     print(f"[data] 角色加载失败 {f.name}: {e}")
-        app.char_styles = {
-            c["name"]: {
+        for c in new_chars.values():
+            new_styles[c["name"]] = {
                 "color": c.get("color", "#888"),
                 "bg": c.get("bg_color", "#f5f5f5"),
                 "name": c.get("display_name", c["name"]),
             }
-            for c in app.characters.values()
-        }
+        app.characters = new_chars
+        app.char_styles = new_styles
 
     # ── 剧本管理 ──
 
@@ -249,6 +249,15 @@ class DataManager:
             "world": {"setting": ""},
         })
         save_json(pdir / "scenes.json", [])
+        save_json(pdir / "characters" / "You.json", {
+            "name": "You",
+            "display_name": "你",
+            "color": "#42a5f5",
+            "bg_color": "#f0f7ff",
+            "personality": "你自己",
+            "description": "就是你自己～一个和大家一起生活的普通人。",
+            "system_prompt": "你是这个世界的一员，和伙伴们自然地聊天。对话内容用直角引号「」包裹，动作描写用*星号*包裹，例如：*伸了个懒腰*、*笑着拍拍她的肩*。回复简短自然，100-200字。",
+        })
         return folder
 
     def delete_profile(self, folder_name: str) -> bool:

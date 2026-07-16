@@ -52,6 +52,7 @@ class DialogueLoop:
         self._user_turn_event = threading.Event()
         self._user_input_text: Optional[str] = None
         self._user_input_skip = False
+        self._waiting_for_user = False
 
     # ═══ 状态查询 ═══
 
@@ -122,13 +123,11 @@ class DialogueLoop:
         """恢复对话。若暂停是因为轮到用户，需用户先输入再恢复。"""
         if not self.running:
             return
-        effective_order = self.app._get_effective_order()
-        current_char = (effective_order[self.app.turn_idx % len(effective_order)]
-                        if effective_order else None)
-        if current_char == "You":
-            # 仍在用户回合，不恢复，UI 层应显示输入栏
-            self.bus.emit("set_status", "轮到你了～")
-            return
+        if self._waiting_for_user:
+            if "You" in self.app._get_effective_order():
+                self.bus.emit("set_status", "轮到你了～")
+                return
+            self._waiting_for_user = False
         self.app.paused = False
         self._paused.set()
         self.bus.emit("resumed", None)
@@ -160,6 +159,7 @@ class DialogueLoop:
         self.app._npc_silent_turns = 0
         self.app._npc_rounds_left = 0
         self.app._char_turns_since_event = 0
+        self._waiting_for_user = False
         self.app.chat._loaded_chat_path = None
         self.app.chat._last_saved_count = -1  # 重置：下次有消息即视为未保存
         self.app.chat._last_autosave_len = 0
@@ -204,6 +204,7 @@ class DialogueLoop:
         text = text.strip()
         if not text:
             return
+        self._waiting_for_user = False
         uc = self.app.characters.get("You", {})
         entry = {
             "name": "You",
@@ -226,6 +227,7 @@ class DialogueLoop:
 
     def skip_user_turn(self):
         """用户跳过自己的回合。"""
+        self._waiting_for_user = False
         self.app.turn_idx += 1
         self.app.turn_count += 1
         self._user_input_text = None
@@ -292,6 +294,7 @@ class DialogueLoop:
 
                 # ═══ 用户回合 ═══
                 if name == "You":
+                    self._waiting_for_user = True
                     self.app.paused = True
                     self._paused.clear()
                     self.bus.emit("user_turn", None)

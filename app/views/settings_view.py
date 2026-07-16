@@ -11,7 +11,7 @@ import flet as ft
 
 import config
 from app.views import ViewBase
-from app.theme import THEME_MODES, COLORS
+from app.theme import THEME_MODES, COLORS, COLOR_THEMES, rebuild_themes
 from services.api_service import test_connection_async, fetch_models_async
 
 __all__ = ["SettingsView"]
@@ -25,6 +25,7 @@ class SettingsView(ViewBase):
         super().__init__(page, app_state, ui_state, router)
         self._built = False
         self._api_status_dot: ft.Container = None
+        self._base_field: ft.TextField = None
         self._key_field: ft.TextField = None
         self._model_dd: ft.Dropdown = None
         self._temp_slider: ft.Slider = None
@@ -37,6 +38,7 @@ class SettingsView(ViewBase):
         self._random_sw: ft.Switch = None
         self._mode_dd: ft.Dropdown = None
         self._speed_dd: ft.Dropdown = None
+        self._color_theme_dd: ft.Dropdown = None
 
     def build(self) -> ft.Control:
         self._root = ft.Column(
@@ -91,13 +93,29 @@ class SettingsView(ViewBase):
         mc = config.app_config.get("model", {})
         self._api_status_dot = ft.Container(width=10, height=10, border_radius=5,
                                             bgcolor=ft.Colors.OUTLINE)
+        ksrc = config.key_source()
         connected = bool(config.API_KEY)
 
-        base_f = ft.TextField(label="API 地址", value=config.API_BASE, dense=True)
+        if ksrc == "env":
+            key_label_text = "API Key（来自环境变量 DEEPSEEK_API_KEY）"
+            key_hint = "由环境变量提供，无需在此填写"
+            key_readonly = True
+        else:
+            key_label_text = "API Key"
+            key_hint = ""
+            key_readonly = False
+
+        self._base_field = ft.TextField(label="API 地址", value=config.API_BASE, dense=True)
         self._key_field = ft.TextField(
-            label="API Key", value=config.API_KEY, dense=True,
+            label=key_label_text, value=config.API_KEY, dense=True,
             password=True, can_reveal_password=True,
+            read_only=key_readonly, hint_text=key_hint,
         )
+        self._key_source_text = ft.Text(
+            "来源: 环境变量" if ksrc == "env" else ("来源: 配置文件" if ksrc == "file" else "未配置"),
+            size=11, color=ft.Colors.ON_SURFACE_VARIANT,
+        )
+
         self._model_dd = ft.Dropdown(
             value=config.MODEL,
             options=[ft.dropdown.Option(m) for m in (config.MODELS_LIST or [config.MODEL])],
@@ -105,7 +123,7 @@ class SettingsView(ViewBase):
         )
         refresh_btn = ft.IconButton(
             icon=ft.Icons.REFRESH, tooltip="刷新模型列表",
-            on_click=lambda e: self._fetch_models(base_f.value, self._key_field.value),
+            on_click=lambda e: self._fetch_models(self._base_field.value, self._key_field.value),
         )
         self._temp_slider = ft.Slider(
             min=0, max=2, divisions=20, value=float(config.TEMPERATURE),
@@ -139,12 +157,14 @@ class SettingsView(ViewBase):
                 self.page.update()
 
             test_connection_async(_on_result, api_key=self._key_field.value,
-                                  api_base=base_f.value)
+                                  api_base=self._base_field.value)
 
         def _save(e=None):
             mc2 = config.app_config.setdefault("model", {})
-            mc2["api_base"] = base_f.value or config.API_BASE
-            mc2["api_key"] = self._key_field.value or ""
+            mc2["api_base"] = self._base_field.value or config.API_BASE
+            # 仅当 Key 不是来自环境变量时才写入文件
+            if config.key_source() != "env":
+                mc2["api_key"] = self._key_field.value or ""
             mc2["model"] = self._model_dd.value or config.MODEL
             mc2["temperature"] = float(self._temp_slider.value)
             mc2["max_tokens"] = int(self._tokens_slider.value)
@@ -154,8 +174,9 @@ class SettingsView(ViewBase):
             except Exception:
                 pass
             # 更新模块级变量
-            config.API_KEY = self._key_field.value or ""
-            config.API_BASE = base_f.value or config.API_BASE
+            if config.key_source() != "env":
+                config.API_KEY = self._key_field.value or ""
+            config.API_BASE = self._base_field.value or config.API_BASE
             config.MODEL = self._model_dd.value or config.MODEL
             config.TEMPERATURE = float(self._temp_slider.value)
             config.MAX_TOKENS = int(self._tokens_slider.value)
@@ -163,13 +184,18 @@ class SettingsView(ViewBase):
             self.page.update()
             self._snack("已保存 API 配置")
 
+        env_tip = ft.Text(
+            "建议通过环境变量 DEEPSEEK_API_KEY 设置 Key，避免明文存储在配置文件中",
+            size=11, color=ft.Colors.ON_SURFACE_VARIANT, italic=True,
+        )
         return self._card("", [
             ft.Row([ft.Text("API 配置", size=15, weight=ft.FontWeight.W_600),
                     self._api_status_dot,
                     ft.Text("已连接" if connected else "未配置", size=11,
                             color=ft.Colors.ON_SURFACE_VARIANT)], spacing=8),
-            base_f,
+            self._base_field,
             self._key_field,
+            self._key_source_text,
             ft.Row([self._model_dd, refresh_btn], spacing=8,
                    vertical_alignment=ft.CrossAxisAlignment.CENTER),
             ft.Text("温度", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
@@ -182,6 +208,7 @@ class SettingsView(ViewBase):
                 ft.OutlinedButton("测试连接", icon=ft.Icons.NETWORK_CHECK, on_click=_test),
                 ft.FilledButton("保存", icon=ft.Icons.SAVE, on_click=_save),
             ], spacing=8),
+            env_tip,
         ])
 
     def _fetch_models(self, base, key):
@@ -212,15 +239,40 @@ class SettingsView(ViewBase):
             allow_multiple_selection=False, allow_empty_selection=False,
             on_change=self._on_theme_change,
         )
+
+        theme_opts = [
+            ft.dropdown.Option(key=k, text=f"{v['name']} ({k})")
+            for k, v in COLOR_THEMES.items()
+        ]
+        color_theme_dd = ft.Dropdown(
+            value=self.ui.color_theme_key,
+            options=theme_opts,
+            dense=True, expand=True,
+            on_select=self._on_color_theme_change,
+        )
+        self._color_theme_dd = color_theme_dd
+
         font_slider = ft.Slider(min=12, max=20, divisions=8, value=14, label="{value}",
                                 on_change=self._on_font_change)
         return self._card("外观", [
             ft.Text("主题模式", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
             seg,
+            ft.Container(height=8),
+            ft.Text("色彩主题", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+            color_theme_dd,
             ft.Container(height=4),
             ft.Text("字体大小（部分控件预览）", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
             font_slider,
         ])
+
+    def _on_color_theme_change(self, e):
+        key = e.control.value
+        if key and key in COLOR_THEMES:
+            self.ui.color_theme_key = key
+            self.ui.save_color_theme()
+            rebuild_themes(self.page, key)
+            self.page.theme_mode = self.ui.theme_mode()
+            self.page.update()
 
     def _on_theme_change(self, e):
         sel = e.control.selected
@@ -307,6 +359,8 @@ class SettingsView(ViewBase):
         if key == "default_mode":
             pc.setdefault("mode", {})["default"] = value
             self.state.mode = value
+            if self.state.loop and self.state.loop.running:
+                self.state.loop.set_mode(value)
         elif key == "default_speed":
             pc.setdefault("speed", {})["default"] = value
             self.state.speed = max(1, min(10, value))
@@ -323,7 +377,7 @@ class SettingsView(ViewBase):
             ft.Row([ft.Text("框架", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Text("Flet 0.86.0", size=12)], spacing=12),
             ft.Row([ft.Text("主题", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-                    ft.Text("蓝白暮光 Soft Twilight", size=12)], spacing=12),
+                    ft.Text("四色光谱 Spectrum", size=12)], spacing=12),
             ft.Container(height=4),
             ft.Text("问题反馈：请在项目仓库提交 Issue", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
             ft.Text("许可证：MIT", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
@@ -339,14 +393,58 @@ class SettingsView(ViewBase):
     def on_enter(self):
         if not self._built:
             return
-        # 如果在剧本编辑页加载了其他剧本，恢复活跃剧本数据
-        # 否则设置页会编辑错误剧本的配置
         active = config.app_config.get("active_profile", "")
         if active and self.state.profile_dir:
             current_folder = self.state.profile_dir.name
             if current_folder != active:
                 self.state.data.load_profile(active)
+        self._sync_api_fields()
         self._render_behavior()
+        if self._color_theme_dd:
+            self._color_theme_dd.value = self.ui.color_theme_key
+
+    def on_leave(self):
+        if not self._built:
+            return
+        self._apply_api_settings()
+
+    def _sync_api_fields(self):
+        if self._base_field:
+            self._base_field.value = config.API_BASE
+        if self._key_field:
+            ksrc = config.key_source()
+            if ksrc == "env":
+                self._key_field.value = config.API_KEY
+                self._key_field.read_only = True
+                self._key_field.label = "API Key（来自环境变量）"
+                self._key_field.hint_text = "由环境变量提供，无需在此填写"
+            else:
+                self._key_field.value = config.API_KEY
+                self._key_field.read_only = False
+                self._key_field.label = "API Key"
+                self._key_field.hint_text = ""
+            self._key_source_text.value = (
+                "来源: 环境变量" if ksrc == "env" else ("来源: 配置文件" if ksrc == "file" else "未配置")
+            )
+        if self._model_dd:
+            if config.MODEL not in [o.key for o in (self._model_dd.options or [])]:
+                self._model_dd.options = [ft.dropdown.Option(m) for m in (config.MODELS_LIST or [config.MODEL])]
+            self._model_dd.value = config.MODEL
+        if self._temp_slider:
+            self._temp_slider.value = float(config.TEMPERATURE)
+        if self._tokens_slider:
+            self._tokens_slider.value = float(config.MAX_TOKENS)
+
+    def _apply_api_settings(self):
+        if config.key_source() != "env":
+            config.API_KEY = (self._key_field.value or "") if self._key_field else ""
+        config.API_BASE = (self._base_field.value or config.API_BASE) if self._base_field else config.API_BASE
+        if self._model_dd:
+            config.MODEL = self._model_dd.value or config.MODEL
+        if self._temp_slider:
+            config.TEMPERATURE = float(self._temp_slider.value)
+        if self._tokens_slider:
+            config.MAX_TOKENS = int(self._tokens_slider.value)
 
     def _render_behavior(self):
         """从 state 同步行为卡片的开关/下拉值。"""

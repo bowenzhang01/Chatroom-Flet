@@ -1,23 +1,27 @@
 # -*- coding: utf-8 -*-
 """
-ChatRoom - Flet Edition · 蓝白暮光主题 (Soft Twilight · Blue)
-  主色重心：正蓝 #4F6FF7
-  渐变带：青绿 #10B981 → 蓝 #4F6FF7 → 靛 #6366F1 → 紫 #8B5CF6
-    仅用于：剧本封面渐变、角色头像 hue 分配
-  强调色：导演琥珀 #F59E0B / 停止玫瑰 #F43F5E / 运行青绿 #10B981
-  圆角：卡片/气泡 16、Chip/按钮 pill(全圆)
+ChatRoom - Flet Edition · 四色光谱主题 (Spectrum Themes)
+  四种渐变色主题，在设置中随时切换：
+    虹光 Rainbow — 全光谱青绿→青→蓝→靛→紫→粉→琥珀→红
+    暮光 Dusk    — 紫红→橙黄 (粉→红→橙→琥珀→金)
+    海天 Ocean   — 橙黄→蓝绿 (琥珀→青柠→翠→青→天蓝)
+    星夜 Star    — 蓝紫→紫红 (蓝→靛→紫→粉)
+  同时保留浅色/深色切换（每主题两套配色）。
 """
 
 import flet as ft
 
 __all__ = [
     "build_theme",
+    "rebuild_themes",
+    "set_color_theme",
+    "get_color_theme_key",
     "THEME_MODES",
+    "THEME_NAMES",
     "COLORS",
     "GRADIENT_BAND",
     "profile_gradient",
     "char_color_at",
-    "PROFILE_EMOJI",
     "profile_emoji",
     "RADIUS_CARD",
     "RADIUS_BUBBLE",
@@ -25,20 +29,34 @@ __all__ = [
     "SPACING",
 ]
 
+# ═══ 当前选中主题（模块级，任意地方 import 即可拿到当前 gradient band）═══
+_current_color_theme_key = "aurora"
 
-# ═══ 主题模式映射 ═══
+
+def set_color_theme(key: str):
+    global _current_color_theme_key
+    if key in COLOR_THEMES:
+        _current_color_theme_key = key
+
+
+def get_color_theme_key() -> str:
+    return _current_color_theme_key
+
+
+# ═══ 主题模式映射（浅色 / 深色 / 系统）═══
 THEME_MODES = {
     "light": ft.ThemeMode.LIGHT,
     "dark": ft.ThemeMode.DARK,
     "system": ft.ThemeMode.SYSTEM,
 }
 
+
 # ═══ 圆角 / 间距令牌 ═══
 RADIUS_CARD = 16
 RADIUS_BUBBLE = 16
 RADIUS_PILL = 999
 
-SPACING = {  # 4/8/12/16/24/32 网格
+SPACING = {
     "xs": 4,
     "sm": 8,
     "md": 12,
@@ -47,21 +65,37 @@ SPACING = {  # 4/8/12/16/24/32 网格
     "xxl": 32,
 }
 
-# ═══ 语义色 token（供 UI 控件直接引用，浅/深分开）═══
-COLORS = {
+
+# ═══════════════════════════════════════════════════════════════
+#  四色光谱主题定义
+# ═══════════════════════════════════════════════════════════════
+
+COLOR_THEMES: dict[str, dict] = {}
+
+# ── 主题 1：极光 Aurora · 青蓝→紫（原默认主题）──
+COLOR_THEMES["aurora"] = {
+    "name": "极光",
+    "seed_light": ft.Colors.BLUE,
+    "seed_dark": ft.Colors.INDIGO,
+    "gradient_band": [
+        "#22D3EE",  # cyan
+        "#3B82F6",  # blue
+        "#6366F1",  # indigo
+        "#8B5CF6",  # violet
+    ],
     "light": {
-        "surface": "#F7F9FF",          # 近白微蓝背景
-        "primary": "#4F6FF7",          # 正蓝
+        "surface": "#F7F9FF",
+        "primary": "#4F6FF7",
         "on_primary": "#FFFFFF",
-        "primary_container": "#E0E7FF",  # 用户气泡 / 选中填充
+        "primary_container": "#E0E7FF",
         "on_primary_container": "#1A1F2E",
         "bubble_ai": "#EEF1FE",
         "bubble_ai_text": "#1A1F2E",
-        "director": "#FEF3C7",          # 导演气泡
+        "director": "#FEF3C7",
         "director_text": "#3D3520",
         "director_accent": "#F59E0B",
-        "success": "#10B981",           # 运行/成功 青绿
-        "danger": "#F43F5E",            # 停止/危险 玫瑰
+        "success": "#10B981",
+        "danger": "#F43F5E",
         "text": "#1A1F2E",
         "text_secondary": "#5B6273",
         "text_hint": "#8B92A5",
@@ -71,7 +105,7 @@ COLORS = {
     },
     "dark": {
         "surface": "#0F1420",
-        "primary": "#818CF8",          # 提亮
+        "primary": "#818CF8",
         "on_primary": "#0F1420",
         "primary_container": "#2A2F4A",
         "on_primary_container": "#E6E7F0",
@@ -91,15 +125,209 @@ COLORS = {
     },
 }
 
-# ═══ 渐变带（青绿 → 蓝 → 靛 → 紫）═══
-GRADIENT_BAND = [
-    "#10B981",  # 青绿
-    "#22D3EE",  # 青
-    "#4F6FF7",  # 正蓝
-    "#6366F1",  # 靛
-    "#8B5CF6",  # 紫
-]
+# ── 主题 2：暮光 Dusk · 紫红→橙黄 ──
+COLOR_THEMES["dusk"] = {
+    "name": "暮光",
+    "seed_light": ft.Colors.DEEP_ORANGE,
+    "seed_dark": ft.Colors.ORANGE,
+    "gradient_band": [
+        "#EC4899",  # pink
+        "#EF4444",  # red
+        "#F97316",  # orange
+        "#F59E0B",  # amber
+        "#FBBF24",  # yellow
+    ],
+    "light": {
+        "surface": "#FFF5F0",
+        "primary": "#F97316",
+        "on_primary": "#FFFFFF",
+        "primary_container": "#FFEDD5",
+        "on_primary_container": "#2D1600",
+        "bubble_ai": "#FFF0EB",
+        "bubble_ai_text": "#2D1600",
+        "director": "#FFFBEB",
+        "director_text": "#3D3020",
+        "director_accent": "#F59E0B",
+        "success": "#10B981",
+        "danger": "#EF4444",
+        "text": "#1A1015",
+        "text_secondary": "#706060",
+        "text_hint": "#A09090",
+        "outline": "#E0D0C8",
+        "surface_container_low": "#FFF0EB",
+        "surface_container_high": "#FFE8E0",
+    },
+    "dark": {
+        "surface": "#1A1015",
+        "primary": "#F97316",
+        "on_primary": "#1A1015",
+        "primary_container": "#3D2A20",
+        "on_primary_container": "#FED7AA",
+        "bubble_ai": "#1F1618",
+        "bubble_ai_text": "#E8D5D0",
+        "director": "#3D3020",
+        "director_text": "#FCE7B0",
+        "director_accent": "#F59E0B",
+        "success": "#10B981",
+        "danger": "#F43F5E",
+        "text": "#E8D5D0",
+        "text_secondary": "#B0A0A0",
+        "text_hint": "#807070",
+        "outline": "#3D2A30",
+        "surface_container_low": "#1F1618",
+        "surface_container_high": "#2A1E22",
+    },
+}
 
+# ── 主题 3：海天 Ocean · 橙黄→蓝绿 ──
+COLOR_THEMES["ocean"] = {
+    "name": "海天",
+    "seed_light": ft.Colors.TEAL,
+    "seed_dark": ft.Colors.CYAN,
+    "gradient_band": [
+        "#F59E0B",  # amber
+        "#84CC16",  # lime
+        "#10B981",  # emerald
+        "#14B8A6",  # teal
+        "#06B6D4",  # cyan
+    ],
+    "light": {
+        "surface": "#F0FBFA",
+        "primary": "#14B8A6",
+        "on_primary": "#FFFFFF",
+        "primary_container": "#CCFBF1",
+        "on_primary_container": "#042F2E",
+        "bubble_ai": "#EEF9F8",
+        "bubble_ai_text": "#042F2E",
+        "director": "#FEF3C7",
+        "director_text": "#3D3520",
+        "director_accent": "#F59E0B",
+        "success": "#10B981",
+        "danger": "#F43F5E",
+        "text": "#042F2E",
+        "text_secondary": "#5B706E",
+        "text_hint": "#8BA09E",
+        "outline": "#C8DEDB",
+        "surface_container_low": "#EEF9F8",
+        "surface_container_high": "#E2F5F3",
+    },
+    "dark": {
+        "surface": "#0F1F1E",
+        "primary": "#2DD4BF",
+        "on_primary": "#0F1F1E",
+        "primary_container": "#1A3A38",
+        "on_primary_container": "#CCFBF1",
+        "bubble_ai": "#142220",
+        "bubble_ai_text": "#D0E8E5",
+        "director": "#3D3520",
+        "director_text": "#FCE7B0",
+        "director_accent": "#F59E0B",
+        "success": "#10B981",
+        "danger": "#F43F5E",
+        "text": "#D0E8E5",
+        "text_secondary": "#90B0AD",
+        "text_hint": "#60807E",
+        "outline": "#2A403E",
+        "surface_container_low": "#142220",
+        "surface_container_high": "#1E302E",
+    },
+}
+
+# ── 主题 4：星夜 Star · 蓝紫→紫红 ──
+COLOR_THEMES["star"] = {
+    "name": "星夜",
+    "seed_light": ft.Colors.DEEP_PURPLE,
+    "seed_dark": ft.Colors.INDIGO,
+    "gradient_band": [
+        "#3B82F6",  # blue
+        "#6366F1",  # indigo
+        "#8B5CF6",  # violet
+        "#A855F7",  # purple
+        "#EC4899",  # pink
+    ],
+    "light": {
+        "surface": "#F7F5FF",
+        "primary": "#7C3AED",
+        "on_primary": "#FFFFFF",
+        "primary_container": "#EDE9FE",
+        "on_primary_container": "#1E0040",
+        "bubble_ai": "#F2EFFE",
+        "bubble_ai_text": "#1E0040",
+        "director": "#FEF3C7",
+        "director_text": "#3D3520",
+        "director_accent": "#F59E0B",
+        "success": "#10B981",
+        "danger": "#F43F5E",
+        "text": "#1A1025",
+        "text_secondary": "#6B6280",
+        "text_hint": "#9B92A5",
+        "outline": "#D5CFE6",
+        "surface_container_low": "#F2EFFE",
+        "surface_container_high": "#E8E3F8",
+    },
+    "dark": {
+        "surface": "#100F1F",
+        "primary": "#A78BFA",
+        "on_primary": "#100F1F",
+        "primary_container": "#2E204A",
+        "on_primary_container": "#E4DDFC",
+        "bubble_ai": "#18162A",
+        "bubble_ai_text": "#E0D8F0",
+        "director": "#3D3520",
+        "director_text": "#FCE7B0",
+        "director_accent": "#F59E0B",
+        "success": "#10B981",
+        "danger": "#F43F5E",
+        "text": "#E0D8F0",
+        "text_secondary": "#A098C0",
+        "text_hint": "#7068A0",
+        "outline": "#30284A",
+        "surface_container_low": "#18162A",
+        "surface_container_high": "#221E38",
+    },
+}
+
+# 映射中文名 → key
+THEME_NAMES = {v["name"]: k for k, v in COLOR_THEMES.items()}
+
+# ── 向后兼容：COLORS 始终指向当前主题 ──
+def _current_colors():
+    return COLOR_THEMES[_current_color_theme_key]
+
+# 动态属性：COLORS["light"] / COLORS["dark"] 跟随当前主题
+class _ColorsProxy:
+    def __getitem__(self, key):
+        ct = COLOR_THEMES.get(_current_color_theme_key, COLOR_THEMES["aurora"])
+        return ct[key]
+    def get(self, key, default=None):
+        ct = COLOR_THEMES.get(_current_color_theme_key, COLOR_THEMES["aurora"])
+        return ct.get(key, default)
+    def __iter__(self):
+        ct = COLOR_THEMES.get(_current_color_theme_key, COLOR_THEMES["aurora"])
+        return iter(ct)
+
+COLORS = _ColorsProxy()
+
+# ═══ 渐变带（跟随当前主题）═══
+def _current_gradient_band():
+    ct = COLOR_THEMES.get(_current_color_theme_key, COLOR_THEMES["aurora"])
+    return ct["gradient_band"]
+
+# 向后兼容：模块级 GRADIENT_BAND 跟随当前主题
+class _GradientBandProxy:
+    def __iter__(self):
+        return iter(_current_gradient_band())
+    def __getitem__(self, idx):
+        return _current_gradient_band()[idx]
+    def __len__(self):
+        return len(_current_gradient_band())
+    def __repr__(self):
+        return repr(_current_gradient_band())
+
+GRADIENT_BAND = _GradientBandProxy()
+
+
+# ═══ 颜色插值工具 ═══
 
 def _hex_to_rgb(hex_str: str) -> tuple:
     h = hex_str.lstrip("#")
@@ -114,37 +342,68 @@ def _lerp(a, b, t):
     return a + (b - a) * t
 
 
-def _color_at(t: float) -> str:
-    """渐变带上 t∈[0,1] 处的颜色（线性插值）。0=青绿, 1=紫。"""
+def _color_at(t: float, band=None) -> str:
+    """渐变带上 t∈[0,1] 处的颜色（线性插值）。未传 band 则用当前主题渐变带。"""
     t = max(0.0, min(1.0, t))
-    n = len(GRADIENT_BAND) - 1
+    b = band if band is not None else _current_gradient_band()
+    n = len(b) - 1
     pos = t * n
     i = int(pos)
     f = pos - i
     if i >= n:
-        return GRADIENT_BAND[n]
-    c1 = _hex_to_rgb(GRADIENT_BAND[i])
-    c2 = _hex_to_rgb(GRADIENT_BAND[i + 1])
+        return b[n]
+    c1 = _hex_to_rgb(b[i])
+    c2 = _hex_to_rgb(b[i + 1])
     return _rgb_to_hex(tuple(round(_lerp(c1[k], c2[k], f)) for k in range(3)))
 
 
-def profile_gradient(seed: str, title: str = "") -> ft.LinearGradient:
-    """剧本封面渐变：根据关键词取渐变带上的一个区段。
+# 角色头像只取冷色调子集
+_CHAR_COLOR_START = 0.10
+_CHAR_COLOR_END = 0.70
 
-    寝室/日常类取青绿→蓝段，星际/科幻类取蓝→紫段；
-    无匹配时按 seed 哈希分配。"""
+
+# ═══ 主题 → (关键词组, emoji, 渐变起点t, 渐变跨度) ═══
+_THEME_DEFS = [
+    (("寝室","宿舍","日常","校园","生活","学校","学生","dorm","life","室友","同桌"), "🏠",   0.00, 0.35),
+    (("魔法","奇幻","巫师","咒语","妖精","精灵","魔","magic","fantasy","witch","fairy"), "🪄",   0.20, 0.50),
+    (("星","飞船","太空","科幻","宇宙","星际","银河","外星","star","ship","space","alien","planet"), "🚀",   0.45, 0.55),
+    (("武","江湖","侠","功夫","门派","剑","sword","kungfu","martial"), "⚔️",   0.00, 0.25),
+    (("恐怖","惊悚","黑暗","吸血鬼","怪物","鬼","horror","zombie","dark","haunt","cursed"), "🕯️",   0.60, 0.40),
+    (("末日","废土","幸存","丧尸","wasteland","apocalypse","survival"), "🏚️",   0.75, 0.25),
+    (("冒险","勇者","探险","西部","沙漠","遗迹","寻宝","adventure","quest","ruins","treasure"), "🗺️",   0.80, 0.20),
+    (("恋爱","浪漫","甜","爱情","甜蜜","约会","romance","love","couple","date","heart"), "💕",   0.65, 0.30),
+    (("古装","宫廷","古风","修仙","ancient","皇帝","皇朝","朝代","剑仙","仙侠","宫"), "🏮",   0.90, 0.10),
+    (("都市","办公室","公司","职场","modern","office","city","白领","上班"), "🏙️",   0.25, 0.28),
+    (("侦探","推理","mystery","案件","破案","crime","罪案","线索"), "🔍",   0.35, 0.20),
+    (("田园","乡村","农场","旅行","自然","森林","山","海","nature","forest","farm","trip"), "🌿",   0.05, 0.20),
+    (("历史","战争","革命","帝国","王朝","history","war","empire","dynasty","起义"), "📜",   0.88, 0.12),
+    (("医院","医生","医疗","护士","急诊","病人","medical","clinic","patient","病房"), "🏥",   0.12, 0.20),
+    (("音乐","乐队","歌","演奏","演唱会","乐器","music","band","rock","jazz","pop"), "🎵",   0.55, 0.30),
+    (("运动","体育","篮球","足球","比赛","竞技","球","sports","match","race","game"), "⚽",   0.35, 0.40),
+    (("美食","料理","餐厅","甜点","咖啡","烘焙","food","cook","bake","chef","kitchen"), "🍳",   0.82, 0.18),
+    (("悬疑","惊悚","thriller","suspense","紧张","谜团"), "👁️",   0.42, 0.18),
+    (("神话","传说","龙","神","myth","legend","dragon","god","deity"), "🐉",   0.75, 0.20),
+    (("海盗","船","航海","海洋","pirate","sail","ocean","sea"), "⚓",   0.30, 0.35),
+    (("蒸汽","机械","齿轮","steam","punk","gear","mecha","robot"), "⚙️",   0.50, 0.30),
+]
+
+
+def _match_theme(text: str):
+    for keywords, emoji, start_t, span in _THEME_DEFS:
+        if any(k in text for k in keywords):
+            return emoji, start_t, span
+    return None
+
+
+def profile_gradient(seed: str, title: str = "") -> ft.LinearGradient:
+    """剧本封面渐变：根据关键词从全色渐变带上取一个区段。"""
     text = (seed + title)
-    if any(k in text for k in ("寝室", "宿舍", "日常", "校园", "生活", "dorm", "life")):
-        start_t, span = 0.0, 0.4       # 青绿→蓝
-    elif any(k in text for k in ("星", "飞船", "太空", "科幻", "宇宙", "star", "ship", "space")):
-        start_t, span = 0.55, 0.45     # 蓝→紫
-    elif any(k in text for k in ("魔法", "奇幻", "magic", "fantasy")):
-        start_t, span = 0.35, 0.5      # 青→靛→紫
-    elif any(k in text for k in ("武", "江湖", "侠", "sword")):
-        start_t, span = 0.0, 0.35      # 偏青绿
+    matched = _match_theme(text)
+    if matched:
+        _, start_t, span = matched
     else:
         s = (abs(hash(seed)) % 100) / 100.0 if seed else 0.3
-        start_t, span = s * 0.55, 0.4
+        start_t, span = s * 0.65, 0.35
     end_t = min(1.0, start_t + span)
     return ft.LinearGradient(
         begin=ft.Alignment.TOP_LEFT,
@@ -154,35 +413,20 @@ def profile_gradient(seed: str, title: str = "") -> ft.LinearGradient:
 
 
 def char_color_at(index: int, total: int) -> str:
-    """角色头像 hue：沿渐变带均匀分配。"""
+    """角色头像 hue：沿冷色调子集均匀分配。"""
     if total <= 1:
-        return _color_at(0.55)  # 蓝-靛之间
+        return _color_at(0.50)
     t = index / (total - 1)
-    # 用渐变带中段 [0.2, 0.8] 分配，避开过青/过紫极端
-    return _color_at(0.2 + t * 0.6)
+    return _color_at(_CHAR_COLOR_START + t * (_CHAR_COLOR_END - _CHAR_COLOR_START))
 
 
-# ═══ 剧本封面 emoji 映射 ═══
-PROFILE_EMOJI = {
-    "dorm_life": "🏠",
-    "starship": "🚀",
-}
-
-_PROFILE_KEYWORDS = [
-    ("寝室", "🏠"), ("宿舍", "🏠"), ("日常", "🏠"), ("校园", "🎓"),
-    ("星", "🚀"), ("飞船", "🚀"), ("太空", "🚀"), ("科幻", "🚀"),
-    ("魔法", "🪄"), ("学院", "🎓"), ("武侠", "⚔️"), ("江湖", "⚔️"),
-    ("末日", "🏚️"), ("医院", "🏥"), ("公司", "🏢"), ("推理", "🔍"),
-]
-
+# ═══ 剧本封面 emoji ═══
 
 def profile_emoji(folder_name: str, title: str = "") -> str:
-    if folder_name in PROFILE_EMOJI:
-        return PROFILE_EMOJI[folder_name]
     text = (folder_name + title)
-    for kw, emoji in _PROFILE_KEYWORDS:
-        if kw in text:
-            return emoji
+    matched = _match_theme(text)
+    if matched:
+        return matched[0]
     return "📖"
 
 
@@ -190,16 +434,19 @@ _PILL_SHAPE = ft.StadiumBorder()
 _CARD_SHAPE = ft.RoundedRectangleBorder(radius=RADIUS_CARD)
 
 
-def build_theme(mode: str = "light") -> ft.Theme:
+# ═══ 主题构建 ═══
+
+def build_theme(theme_key: str = "aurora", mode: str = "light") -> ft.Theme:
     """构建 Flet Theme。
 
+    theme_key: 'aurora' | 'dusk' | 'ocean' | 'star'
     mode: 'light' | 'dark'
-    主色种子正蓝，M3 自动派生 40 色 tonal palette。
     """
+    ct = COLOR_THEMES.get(theme_key, COLOR_THEMES["aurora"])
     is_dark = mode == "dark"
-    c = COLORS[mode]
+    c = ct[mode]
+    seed = ct["seed_dark" if is_dark else "seed_light"]
 
-    # ── 构建完整 ColorScheme（Flet 0.85：color_scheme 默认 None，需显式构造）──
     cs = ft.ColorScheme(
         primary=c["primary"],
         on_primary=c["on_primary"],
@@ -218,14 +465,13 @@ def build_theme(mode: str = "light") -> ft.Theme:
 
     theme = ft.Theme(
         color_scheme=cs,
-        color_scheme_seed=ft.Colors.BLUE if not is_dark else ft.Colors.INDIGO,
+        color_scheme_seed=seed,
         font_family="Noto Sans SC",
         use_material3=True,
         canvas_color=c["surface"],
         scaffold_bgcolor=c["surface"],
     )
 
-    # ── 组件级圆角（Flet 0.85：组件主题默认 None，需显式赋值实例）──
     theme.card_theme = ft.CardTheme(shape=_CARD_SHAPE)
     theme.chip_theme = ft.ChipTheme(shape=_PILL_SHAPE)
     _pill_style = ft.ButtonStyle(shape=_PILL_SHAPE)
@@ -236,3 +482,9 @@ def build_theme(mode: str = "light") -> ft.Theme:
     theme.floating_action_button_theme = ft.FloatingActionButtonTheme(shape=_PILL_SHAPE)
 
     return theme
+
+
+def rebuild_themes(page: ft.Page, theme_key: str):
+    """切换色彩主题时调用：重建 page.theme 和 page.dark_theme。"""
+    page.theme = build_theme(theme_key, "light")
+    page.dark_theme = build_theme(theme_key, "dark")

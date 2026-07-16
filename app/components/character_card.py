@@ -30,34 +30,55 @@ class CharacterCard:
         desc = self.char.get("description", "") or self.char.get("personality", "")
         color = self.char.get("color") or char_color_at(index, total)
         initial = (dname or name or "?")[0]
+        is_you = name == "You"
 
         avatar = ft.CircleAvatar(
             content=ft.Text(initial, size=16, color=ft.Colors.WHITE, weight=ft.FontWeight.W_700),
             bgcolor=color, radius=20,
         )
-        menu_items = [
-            ft.PopupMenuItem(content=ft.Text("编辑"), icon=ft.Icons.EDIT,
-                             on_click=lambda e: self._edit()),
-            ft.PopupMenuItem(content=ft.Text("删除"), icon=ft.Icons.DELETE_OUTLINE,
-                             on_click=lambda e: self._menu("delete")),
-            ft.PopupMenuItem(content=ft.Text("复制"), icon=ft.Icons.CONTENT_COPY,
-                             on_click=lambda e: self._menu("duplicate")),
-        ]
+        if is_you:
+            menu_items = [
+                ft.PopupMenuItem(content=ft.Text("编辑"), icon=ft.Icons.EDIT,
+                                 on_click=lambda e: self._edit()),
+            ]
+        else:
+            menu_items = [
+                ft.PopupMenuItem(content=ft.Text("编辑"), icon=ft.Icons.EDIT,
+                                 on_click=lambda e: self._edit()),
+                ft.PopupMenuItem(content=ft.Text("删除"), icon=ft.Icons.DELETE_OUTLINE,
+                                 on_click=lambda e: self._menu("delete")),
+                ft.PopupMenuItem(content=ft.Text("复制"), icon=ft.Icons.CONTENT_COPY,
+                                 on_click=lambda e: self._menu("duplicate")),
+            ]
         menu_btn = ft.PopupMenuButton(icon=ft.Icons.MORE_VERT, items=menu_items)
+
+        header_controls = [
+            avatar,
+            ft.Column(
+                controls=[
+                    ft.Text(dname, size=14, weight=ft.FontWeight.W_600, max_lines=1,
+                            overflow=ft.TextOverflow.ELLIPSIS),
+                    ft.Text(en, size=11, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=1),
+                ],
+                spacing=0, tight=True,
+            ),
+        ]
+        if is_you:
+            header_controls.append(
+                ft.Container(
+                    content=ft.Text("👤 你", size=10, color=ft.Colors.PRIMARY),
+                    padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                    border_radius=8,
+                    bgcolor=ft.Colors.PRIMARY_CONTAINER,
+                )
+            )
 
         card = ft.Card(
             content=ft.Container(
                 content=ft.Column(
                     controls=[
                         ft.Row(
-                            controls=[avatar, ft.Column(
-                                controls=[
-                                    ft.Text(dname, size=14, weight=ft.FontWeight.W_600, max_lines=1,
-                                            overflow=ft.TextOverflow.ELLIPSIS),
-                                    ft.Text(en, size=11, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=1),
-                                ],
-                                spacing=0, tight=True,
-                            )],
+                            controls=header_controls,
                             spacing=10,
                         ),
                         ft.Text(desc, size=11, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=2,

@@ -24,13 +24,23 @@ app_config = load_json(BASE_DIR / "config.json")
 
 
 def resolve_key():
-    """按优先级解析 API Key：config.json > 环境变量"""
-    k = app_config.get("model", {}).get("api_key", "")
-    if k:
-        return k
+    """按优先级解析 API Key：环境变量 > config.json
+    环境变量：DEEPSEEK_API_KEY 或 OPENAI_API_KEY"""
     k = os.environ.get("DEEPSEEK_API_KEY", "") or os.environ.get("OPENAI_API_KEY", "")
     if k:
         return k
+    k = app_config.get("model", {}).get("api_key", "")
+    if k:
+        return k
+    return ""
+
+
+def key_source() -> str:
+    """返回 API Key 来源：'env' | 'file' | ''（未配置）"""
+    if os.environ.get("DEEPSEEK_API_KEY", "") or os.environ.get("OPENAI_API_KEY", ""):
+        return "env"
+    if app_config.get("model", {}).get("api_key", ""):
+        return "file"
     return ""
 
 
