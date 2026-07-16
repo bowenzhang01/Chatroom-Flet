@@ -230,6 +230,7 @@ def test_connection_async(
     """测试 API 连接（后台线程）。
     回调签名 on_result(success: bool, message: str)。"""
     def _run():
+        nonlocal api_key, api_base
         try:
             if api_key is None:
                 api_key = config.API_KEY

@@ -63,14 +63,22 @@ class ModeChips:
                 self.state.data._save_profile_config()
             except Exception as ex:
                 print(f"[mode_chips] 保存 {attr} 失败: {ex}")
-            # 用户模式开启时自动加入 You
-            if attr == "user_mode" and new_val:
-                if "You" in self.state.characters and "You" not in self.state.turn_order:
-                    self.state.turn_order.append("You")
-                    try:
-                        self.state.data._save_turn_order()
-                    except Exception:
-                        pass
+            # 用户模式开关：自动加入 / 移除 You
+            if attr == "user_mode":
+                if new_val:
+                    if "You" in self.state.characters and "You" not in self.state.turn_order:
+                        self.state.turn_order.append("You")
+                        try:
+                            self.state.data._save_turn_order()
+                        except Exception:
+                            pass
+                else:
+                    if "You" in self.state.turn_order:
+                        self.state.turn_order.remove("You")
+                        try:
+                            self.state.data._save_turn_order()
+                        except Exception:
+                            pass
             if self.on_change:
                 try:
                     self.on_change(attr, new_val)

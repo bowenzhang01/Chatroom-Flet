@@ -36,12 +36,12 @@ class DirectorInput:
             on_submit=lambda e: self._send(),
         )
         self._send_btn = ft.FilledButton(
-            content="发送",
+            content=ft.Text("发送"),
             icon=ft.Icons.SEND,
             on_click=lambda e: self._send(),
         )
         self._skip_btn = ft.TextButton(
-            content="跳过",
+            content=ft.Text("跳过"),
             icon=ft.Icons.SKIP_NEXT,
             on_click=lambda e: self._skip(),
             visible=False,
@@ -90,10 +90,7 @@ class DirectorInput:
             self.page.update()
         except Exception:
             pass
-        try:
-            self._field.focus()
-        except Exception:
-            pass
+        self._try_focus()
 
     def hide(self):
         self.mode = None
@@ -136,6 +133,14 @@ class DirectorInput:
         # 用户模式发送后隐藏（回合结束）；导演模式保持显示
         if self.mode == "user":
             self.hide()
+
+    def _try_focus(self):
+        try:
+            result = self._field.focus()
+            if result is not None and hasattr(result, "close"):
+                result.close()
+        except Exception:
+            pass
 
     def _skip(self):
         try:

@@ -64,7 +64,7 @@ class CharacterCard:
                                 overflow=ft.TextOverflow.ELLIPSIS),
                         ft.Row(
                             controls=[
-                                ft.TextButton(content="✨ 补全", icon=ft.Icons.AUTO_AWESOME,
+                                ft.TextButton(content=ft.Text("✨ 补全"), icon=ft.Icons.AUTO_AWESOME,
                                               on_click=lambda e: self._ai()),
                                 ft.Container(expand=True),
                                 menu_btn,

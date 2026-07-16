@@ -28,23 +28,10 @@ class TurnOrderEditor:
         self.root = self._build()
 
     def _build(self) -> ft.Control:
-        self._mode_dd = ft.Dropdown(
-            value=self.state.mode if self.state.mode in ("round", "random", "dynamic") else "round",
-            options=[ft.dropdown.Option(v, text=l) for l, v in _MODES],
-            dense=True,
-            content_padding=ft.Padding.symmetric(horizontal=12, vertical=6),
-            width=120,
-            on_select=lambda e: self.state.loop.set_mode(e.control.value),
-        )
         self._active_col = ft.Column(spacing=6, tight=True)
         self._standby_row = ft.Row(spacing=8, wrap=True)
         return ft.Column(
             controls=[
-                ft.Row(
-                    controls=[ft.Text("发言模式", size=13, weight=ft.FontWeight.W_600),
-                              self._mode_dd],
-                    spacing=8,
-                ),
                 ft.Container(height=4),
                 ft.Text("参与对话", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.ON_SURFACE_VARIANT),
                 self._active_col,
@@ -58,7 +45,6 @@ class TurnOrderEditor:
         )
 
     def refresh(self):
-        self._mode_dd.value = self.state.mode if self.state.mode in ("round", "random", "dynamic") else "round"
         self._build_active()
         self._build_standby()
         try:
@@ -73,8 +59,11 @@ class TurnOrderEditor:
         for i, name in enumerate(order):
             if name not in self.state.characters:
                 continue
+            # 用户模式下 You 由锁定行显示，不生成普通行（避免重复）
+            if name == "You" and self.state.user_mode:
+                continue
             rows.append(self._make_row(i, name, total))
-        # 你锁定行
+        # 你锁定行（用户模式 + You 在顺序中）
         if "You" in self.state.characters and self.state.user_mode and "You" in order:
             rows.append(self._locked_you_row())
         self._active_col.controls = rows
@@ -91,7 +80,7 @@ class TurnOrderEditor:
             dname = c.get("display_name", n)
             chips.append(ft.Chip(
                 label=ft.Text(dname, size=12),
-                avatar=ft.Icon(ft.Icons.ADD, size=14),
+                leading=ft.Icon(ft.Icons.ADD, size=14),
                 on_click=self._make_add(n),
             ))
         self._standby_row.controls = chips
@@ -116,17 +105,22 @@ class TurnOrderEditor:
         color = char_color_at(color_idx, max(1, len(non_you)))
         dot = ft.Container(width=10, height=10, border_radius=5, bgcolor=color)
 
+        # You 行不显示移除按钮（用户模式下由锁定行处理；非用户模式下不应出现）
+        trailing = ft.Container(width=4)
+        if not is_you:
+            trailing = ft.IconButton(
+                icon=ft.Icons.CLOSE, icon_size=16,
+                tooltip="移除",
+                on_click=self._make_remove(name),
+            )
+
         card = ft.Container(
             content=ft.Row(
                 controls=[
                     ft.Icon(ft.Icons.DRAG_HANDLE, size=18, color=ft.Colors.ON_SURFACE_VARIANT),
                     dot,
                     ft.Text(dname, size=13, weight=ft.FontWeight.W_500, expand=True),
-                    ft.IconButton(
-                        icon=ft.Icons.CLOSE, icon_size=16,
-                        tooltip="移除",
-                        on_click=self._make_remove(name),
-                    ),
+                    trailing,
                 ],
                 spacing=8,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,

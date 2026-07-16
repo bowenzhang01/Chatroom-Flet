@@ -18,6 +18,7 @@ ChatRoom - Flet Edition · AI 引擎
     _parse_and_strip_next_tag(text)  → 解析 [NEXT:Name] 并返回 (clean_text, next_name_or_None)
 """
 
+import json
 import random
 import re
 from datetime import datetime
@@ -554,4 +555,268 @@ class AIEngine:
             temperature=0.9,
             max_tokens=2500,
             timeout=60.0,
+        )
+
+    # ═══ AI 生成场景 / 角色 / 推断世界观 / 补全角色 ═══
+
+    def build_generate_scenes_prompt(self) -> str:
+        """构建「AI 生成场景」prompt：根据世界观和角色生成场景列表。"""
+        world = self.app._profile_config.get("world", {}).get("setting", "")
+        world_line = f"【世界观】\n{world}\n\n" if world else ""
+        char_lines = []
+        for name, c in self.app.characters.items():
+            if name == "You":
+                continue
+            dname = c.get("display_name", name)
+            desc = c.get("description", "") or c.get("personality", "")
+            char_lines.append(f"- {dname}: {desc[:40]}")
+        char_list = "\n".join(char_lines) if char_lines else "(暂无角色)"
+        existing = self.app.scenes or []
+        existing_lines = [f"- {s.get('time','')}·{s.get('location','')}" for s in existing]
+        existing_str = "\n".join(existing_lines) if existing_lines else "(无)"
+
+        return (
+            f"{world_line}"
+            f"【已有角色】\n{char_list}\n\n"
+            f"【已有场景（避免重复）】\n{existing_str}\n\n"
+            f"请为这个剧本生成 3-6 个新场景。每个场景包含：\n"
+            f"- time: 时间标签（2-6字，如「清晨」「午后」「深夜」）\n"
+            f"- location: 地点名称（2-6字）\n"
+            f"- mood: 氛围（2-4字）\n"
+            f"- scene: 场景描述（80-150字，像小说段落，含感官描写）\n\n"
+            f"返回纯JSON数组，不要```代码块：\n"
+            f'[{{"time":"...","location":"...","mood":"...","scene":"..."}}]'
+        )
+
+    def generate_scenes_async(self, on_result, on_error=None):
+        """异步生成场景列表。on_result(scenes_list) / on_error(msg)。"""
+        from services.api_service import call_chat_completion_async
+        if not config.API_KEY:
+            if on_error:
+                on_error("未配置 API Key")
+            return
+
+        prompt = self.build_generate_scenes_prompt()
+
+        def _on_text(content):
+            try:
+                data, err = extract_json(content)
+                if not data:
+                    if on_error:
+                        on_error(f"解析失败: {err}")
+                    return
+                # 兼容：AI 可能返回 {"scenes": [...]} 而非纯数组
+                if isinstance(data, dict):
+                    for k in ("scenes", "data", "items", "results"):
+                        if isinstance(data.get(k), list):
+                            data = data[k]
+                            break
+                if not isinstance(data, list):
+                    if on_error:
+                        on_error("返回数据不是场景列表")
+                    return
+                on_result(data)
+            except Exception as ex:
+                if on_error:
+                    on_error(str(ex))
+
+        call_chat_completion_async(
+            messages=[
+                {"role": "system", "content": "你是场景设计师，只返回JSON数组。"},
+                {"role": "user", "content": prompt},
+            ],
+            on_result=_on_text,
+            on_error=on_error,
+            temperature=0.85,
+            max_tokens=1500,
+            timeout=45.0,
+        )
+
+    def build_generate_characters_prompt(self) -> str:
+        """构建「AI 生成角色」prompt：根据世界观和场景生成角色列表。"""
+        world = self.app._profile_config.get("world", {}).get("setting", "")
+        world_line = f"【世界观】\n{world}\n\n" if world else ""
+        scene_lines = [f"- {s.get('time','')}·{s.get('location','')}: {s.get('scene','')[:40]}"
+                       for s in (self.app.scenes or [])]
+        scene_list = "\n".join(scene_lines) if scene_lines else "(暂无场景)"
+        existing = [c.get("display_name", name) for name, c in self.app.characters.items() if name != "You"]
+        existing_str = "、".join(existing) if existing else "(无)"
+
+        return (
+            f"{world_line}"
+            f"【已有场景】\n{scene_list}\n\n"
+            f"【已有角色（避免重复）】\n{existing_str}\n\n"
+            f"请为这个剧本生成 3-5 个新角色。要求：\n"
+            f"1. 名字（name: 英文）和显示名（display_name: 中文）\n"
+            f"2. 性格有差异，互补或冲突\n"
+            f"3. color: 用 #RRGGBB 格式，每个角色不同色调\n"
+            f"4. description: 外貌+身份描述（30-60字）\n"
+            f"5. personality: 性格关键词（10-20字）\n"
+            f"6. system_prompt: 详细人设定义，包括语气、表达方式、口头禅等\n"
+            f"   对话用「」包裹，动作用*星号*描述\n\n"
+            f"返回纯JSON数组，不要```代码块：\n"
+            f'[{{"name":"Yuki","display_name":"小雪","color":"#7ec8e3",'
+            f'"description":"...","personality":"...","system_prompt":"..."}}]'
+        )
+
+    def generate_characters_async(self, on_result, on_error=None):
+        """异步生成角色列表。on_result(characters_list) / on_error(msg)。"""
+        from services.api_service import call_chat_completion_async
+        if not config.API_KEY:
+            if on_error:
+                on_error("未配置 API Key")
+            return
+
+        prompt = self.build_generate_characters_prompt()
+
+        def _on_text(content):
+            try:
+                data, err = extract_json(content)
+                if not data:
+                    if on_error:
+                        on_error(f"解析失败: {err}")
+                    return
+                # 兼容：AI 可能返回 {"characters": [...]} 而非纯数组
+                if isinstance(data, dict):
+                    for k in ("characters", "data", "items", "results"):
+                        if isinstance(data.get(k), list):
+                            data = data[k]
+                            break
+                if not isinstance(data, list):
+                    if on_error:
+                        on_error("返回数据不是角色列表")
+                    return
+                on_result(data)
+            except Exception as ex:
+                if on_error:
+                    on_error(str(ex))
+
+        call_chat_completion_async(
+            messages=[
+                {"role": "system", "content": "你是角色设计师，只返回JSON数组。"},
+                {"role": "user", "content": prompt},
+            ],
+            on_result=_on_text,
+            on_error=on_error,
+            temperature=0.9,
+            max_tokens=2500,
+            timeout=60.0,
+        )
+
+    def build_complete_character_prompt(self, char_name: str) -> str:
+        """构建「补全角色」prompt：为已有角色填充缺失字段。"""
+        c = self.app.characters.get(char_name, {})
+        world = self.app._profile_config.get("world", {}).get("setting", "")
+        world_line = f"【世界观】\n{world}\n\n" if world else ""
+        existing_fields = {k: v for k, v in c.items() if k not in ("bg_color",)}
+        fields_str = json.dumps(existing_fields, ensure_ascii=False, indent=2)
+
+        return (
+            f"{world_line}"
+            f"【角色现有信息】\n{fields_str}\n\n"
+            f"请补全这个角色的设定。保留已有字段，填充缺失的：\n"
+            f"- name: 英文名（若已有则保留）\n"
+            f"- display_name: 中文显示名\n"
+            f"- color: #RRGGBB 格式\n"
+            f"- description: 外貌+身份描述（30-60字）\n"
+            f"- personality: 性格关键词（10-20字）\n"
+            f"- system_prompt: 详细人设定义，包括语气、表达方式、口头禅\n"
+            f"  对话用「」包裹，动作用*星号*描述\n\n"
+            f"返回纯JSON对象，不要```代码块"
+        )
+
+    def complete_character_async(self, char_name: str, on_result, on_error=None):
+        """异步补全角色。on_result(completed_char_dict) / on_error(msg)。"""
+        from services.api_service import call_chat_completion_async
+        if not config.API_KEY:
+            if on_error:
+                on_error("未配置 API Key")
+            return
+
+        prompt = self.build_complete_character_prompt(char_name)
+
+        def _on_text(content):
+            try:
+                data, err = extract_json(content)
+                if not data:
+                    if on_error:
+                        on_error(f"解析失败: {err}")
+                    return
+                if not isinstance(data, dict):
+                    if on_error:
+                        on_error("返回数据不是角色对象")
+                    return
+                on_result(data)
+            except Exception as ex:
+                if on_error:
+                    on_error(str(ex))
+
+        call_chat_completion_async(
+            messages=[
+                {"role": "system", "content": "你是角色设计师，只返回JSON对象。"},
+                {"role": "user", "content": prompt},
+            ],
+            on_result=_on_text,
+            on_error=on_error,
+            temperature=0.85,
+            max_tokens=1200,
+            timeout=45.0,
+        )
+
+    def build_infer_world_prompt(self) -> str:
+        """构建「推断世界观」prompt：从标题和场景推断世界观。"""
+        title = self.app.title
+        scene_lines = [f"- {s.get('time','')}·{s.get('location','')}: {s.get('scene','')[:60]}"
+                       for s in (self.app.scenes or [])]
+        scene_list = "\n".join(scene_lines) if scene_lines else "(无场景)"
+        char_lines = [f"- {c.get('display_name', n)}: {c.get('description','')[:40]}"
+                      for n, c in self.app.characters.items() if n != "You"]
+        char_list = "\n".join(char_lines) if char_lines else "(无角色)"
+
+        return (
+            f"【剧本标题】\n{title}\n\n"
+            f"【已有场景】\n{scene_list}\n\n"
+            f"【已有角色】\n{char_list}\n\n"
+            f"请根据以上信息，推断并生成这个剧本的世界观设定。\n"
+            f"世界观应该是一个 1-3 句的描述，概括故事发生的背景、时代、地点等。\n\n"
+            f"返回纯JSON：{{\"world\":\"世界观描述\"}}"
+        )
+
+    def infer_world_async(self, on_result, on_error=None):
+        """异步推断世界观。on_result(world_str) / on_error(msg)。"""
+        from services.api_service import call_chat_completion_async
+        if not config.API_KEY:
+            if on_error:
+                on_error("未配置 API Key")
+            return
+
+        prompt = self.build_infer_world_prompt()
+
+        def _on_text(content):
+            try:
+                data, err = extract_json(content)
+                if not data:
+                    if on_error:
+                        on_error(f"解析失败: {err}")
+                    return
+                world = data.get("world", "")
+                if not world:
+                    if on_error:
+                        on_error("返回数据缺少世界观")
+                    return
+                on_result(world)
+            except Exception as ex:
+                if on_error:
+                    on_error(str(ex))
+
+        call_chat_completion_async(
+            messages=[
+                {"role": "system", "content": "你是世界观设定师，只返回JSON。"},
+                {"role": "user", "content": prompt},
+            ],
+            on_result=_on_text,
+            on_error=on_error,
+            temperature=0.8,
+            max_tokens=300,
+            timeout=30.0,
         )

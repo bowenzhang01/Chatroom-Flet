@@ -104,12 +104,23 @@ class AppState:
         config.app_config["active_profile"] = profile_name
         self.data._save_config()
 
+    def load_profile_for_edit(self, profile_name: str):
+        """加载剧本数据到 state 用于查看/编辑，不改变活跃剧本、不停止对话。
+
+        用于剧本详情页：用户可能只是在浏览/编辑，不应清空当前对话。
+        返回聊天页时 on_enter 会自动恢复活跃剧本的数据。
+        """
+        self.data.load_profile(profile_name)
+
     def switch_profile(self, new_name: str):
-        """切换剧本（停止对话 + 清空上下文 + 加载新剧本）。"""
+        """切换剧本（停止对话 + 清空上下文 + 加载新剧本）。
+
+        loop.reset() 会清空 history 和运行时状态；
+        不调用 bus.clear() — chat_view 通过 on_leave/on_enter 管理订阅生命周期。
+        """
         if new_name == config.app_config.get("active_profile", ""):
             return
         self.loop.reset()
-        self.bus.clear()
         self.load_profile(new_name)
         self.scene_idx = 0
         self.current_scene = None

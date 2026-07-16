@@ -32,6 +32,7 @@ class AppRouter:
         self.state = app_state
         self.ui = ui_state
         self._views = {}  # route -> view control
+        self._current_route: str = None
         self._rail: ft.NavigationRail = None
         self._navbar: ft.NavigationBar = None
         self._content: ft.Control = None
@@ -45,7 +46,7 @@ class AppRouter:
 
         self._build_shell()
         self.page.add(self._root)
-        self.page.go(self.ui.route)
+        self.page.navigate(self.ui.route)
 
     def _build_shell(self):
         desktop = self.ui.is_desktop(self.page)
@@ -82,7 +83,7 @@ class AppRouter:
         self._navbar = ft.NavigationBar(
             selected_index=0,
             destinations=[
-                ft.NavigationDestination(icon=it["icon"], selected_icon=it["selected_icon"], label=it["label"])
+                ft.NavigationBarDestination(icon=it["icon"], selected_icon=it["selected_icon"], label=it["label"])
                 for it in NAV_ITEMS
             ],
             on_change=self._on_navbar_change,
@@ -125,11 +126,24 @@ class AppRouter:
         return "/chat"
 
     def navigate(self, route: str):
-        self.page.go(route)
+        self.page.navigate(route)
+
+    def get_view(self, route: str):
+        """获取已缓存的视图实例（供跨视图调用）。"""
+        return self._views.get(route)
 
     # ═══ 事件 ═══
     def _on_route_change(self, e):
         route = self.page.route or "/chat"
+        # 离开旧视图
+        if self._current_route and self._current_route != route:
+            old = self._views.get(self._current_route)
+            if old and hasattr(old, "on_leave"):
+                try:
+                    old.on_leave()
+                except Exception as ex:
+                    print(f"[router] on_leave {self._current_route} 异常: {ex}")
+        self._current_route = route
         self.ui.route = route
         idx = self._route_to_index(route)
         if self._rail:
@@ -147,13 +161,13 @@ class AppRouter:
         self.page.update()
 
     def _on_rail_change(self, e):
-        self.page.go(self._index_to_route(e.control.selected_index))
+        self.page.navigate(self._index_to_route(e.control.selected_index))
 
     def _on_navbar_change(self, e):
-        self.page.go(self._index_to_route(e.control.selected_index))
+        self.page.navigate(self._index_to_route(e.control.selected_index))
 
     def _on_view_pop(self, e):
-        self.page.go("/chat")
+        self.page.navigate("/chat")
 
     def _on_resize(self, e):
         desktop = self.ui.is_desktop(self.page)
@@ -172,7 +186,13 @@ class AppRouter:
                 self._rail.selected_index = idx
             if self._navbar:
                 self._navbar.selected_index = idx
-            self._content.content = self._get_view(route)._root
+            view = self._get_view(route)
+            self._content.content = view._root
+            if hasattr(view, "on_enter"):
+                try:
+                    view.on_enter()
+                except Exception as ex:
+                    print(f"[router] on_enter (resize) {route} 异常: {ex}")
             self.page.update()
 
     # ═══ 主题刷新 ═══

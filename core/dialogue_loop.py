@@ -68,8 +68,11 @@ class DialogueLoop:
     def start(self):
         """启动对话。若 scene_idx == -1（按时间生成），由 UI 层先调
         ai.generate_time_scene_sync() 并确认后再调此方法。"""
-        if self.running:
-            return
+        if self._thread is not None:
+            if self._thread.is_alive():
+                print("[loop] start: thread already alive, ignoring")
+                return
+            self._thread = None
         # 检查 API Key
         import config
         if not config.API_KEY:
@@ -132,23 +135,21 @@ class DialogueLoop:
         self.bus.emit("set_status", "运行中")
 
     def stop(self):
-        """停止对话（线程退出，保留 history）。"""
-        if not self.running:
-            return
+        """停止对话（线程退出，清空历史）。
+
+        若从 loop 线程内部调用（如 API 错误），跳过 join 避免 RuntimeError。
+        始终 emit "stopped" 事件，确保 UI 一致刷新。
+        """
         self._stop_event.set()
         self._paused.set()  # 释放可能的暂停阻塞
         self._user_turn_event.set()  # 释放用户回合阻塞
-        if self._thread:
-            self._thread.join(timeout=2.0)
+        # 避免在 loop 线程内 join 自身（会抛 RuntimeError）
+        if self._thread and self._thread is not threading.current_thread():
+            self._thread.join(timeout=5.0)
         self._thread = None
         self.app.running = False
         self.app.paused = False
-        self.bus.emit("stopped", None)
-        self.bus.emit("set_status", "已停止")
-
-    def reset(self):
-        """停止并清空对话历史（回到初始状态）。"""
-        self.stop()
+        # 清空对话历史与运行时状态（stop = 完全重置）
         self.app.history.clear()
         self.app.turn_idx = 0
         self.app.turn_count = 0
@@ -160,7 +161,15 @@ class DialogueLoop:
         self.app._npc_rounds_left = 0
         self.app._char_turns_since_event = 0
         self.app.chat._loaded_chat_path = None
-        self.bus.emit("set_status", "就绪")
+        self.app.chat._last_saved_count = -1  # 重置：下次有消息即视为未保存
+        self.app.chat._last_autosave_len = 0
+        self.app.chat._clear_autosave()  # 清除过期自动存档，避免下次启动弹出恢复提示
+        self.bus.emit("stopped", None)
+        self.bus.emit("set_status", "已停止")
+
+    def reset(self):
+        """停止并清空对话历史（回到初始状态）。等同于 stop()。"""
+        self.stop()
 
     def set_speed(self, speed: int):
         self.app.speed = max(1, min(10, speed))
@@ -227,6 +236,19 @@ class DialogueLoop:
 
     def _run(self):
         """对话主循环（后台线程）。"""
+        # 按时间生成场景（scene_idx == -1 时在 loop 线程中生成，避免阻塞 UI）
+        if self.app.scene_idx == -1 and not self.app.current_scene:
+            self.bus.emit("set_status", "正在生成场景...")
+            scene, err = self.ai.generate_time_scene_sync()
+            if not self._stop_event.is_set() and scene:
+                self.app.current_scene = scene
+                self.app.scene_version += 1
+                self.app._last_scene_update_turn = -1
+                self.bus.emit("scene_changed", {
+                    **scene, "version": self.app.scene_version,
+                    "manual": True, "is_time_gen": True,
+                })
+
         current_thread = threading.current_thread()
         while not self._stop_event.is_set():
             try:

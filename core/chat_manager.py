@@ -29,10 +29,18 @@ class ChatManager:
         self._loaded_chat_path = None   # 记录加载的对话路径，保存时覆盖
         self._last_save_time = 0.0      # 上次保存时间戳
         self._last_autosave_len = 0     # 上次自动存档时的消息数
+        self._last_saved_count = -1     # 上次保存（手动或自动）时的消息数；-1=从未保存
 
     @property
     def chats_dir(self) -> Path:
-        """当前剧本的对话存档目录"""
+        """当前活跃剧本的对话存档目录。
+
+        始终基于 active_profile（而非可能被 load_profile_for_edit 临时切换的
+        profile_dir），确保保存/自动存档始终写入活跃剧本的存档目录。
+        """
+        active = config.app_config.get("active_profile", "")
+        if active:
+            return config.PROFILES_DIR / active / "chats"
         return self.app.profile_dir / "chats" if self.app.profile_dir else None
 
     def _ensure_chats_dir(self):
@@ -94,6 +102,32 @@ class ChatManager:
                 result.append((fp, meta))
         return result
 
+    def list_chats_for_profile(self, folder: str):
+        """列出指定剧本的对话存档（不切换活跃剧本）。返回 [(path, meta), ...]"""
+        chats_dir = config.PROFILES_DIR / folder / "chats"
+        if not chats_dir.exists():
+            return []
+        result = []
+        # 自动存档
+        auto = chats_dir / "_autosave.json"
+        if auto.exists():
+            data = load_json(auto)
+            if data and data.get("history"):
+                meta = self._read_chat_meta(auto)
+                if meta:
+                    result.append((auto, meta))
+        # 普通存档
+        files = list(chats_dir.glob("chat_*.json"))
+        def _sort_key(fp):
+            m = re.search(r'chat_(\d{8}_\d{6})', fp.name)
+            return m.group(1) if m else "00000000_000000"
+        files.sort(key=_sort_key, reverse=True)
+        for fp in files:
+            meta = self._read_chat_meta(fp)
+            if meta:
+                result.append((fp, meta))
+        return result
+
     # ── 保存 ──
 
     def _save_chat_to_file(self, filepath, title):
@@ -104,6 +138,7 @@ class ChatManager:
             "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "message_count": len(self.app.history),
             "scene_idx": self.app.scene_idx,
+            "current_scene": self.app.current_scene,
             "turn_idx": self.app.turn_idx,
             "turn_count": self.app.turn_count,
             "history": list(self.app.history),
@@ -114,8 +149,11 @@ class ChatManager:
         """AI 不可用时的备选标题：剧本名 - 场景时间 - HH:MM"""
         ac = self.app._profile_config.get("app", {})
         profile_name = ac.get("title", self.app.title)
-        scene_time = (self.app.scenes[self.app.scene_idx].get("time", "")
-                      if self.app.scenes and self.app.scene_idx < len(self.app.scenes) else "")
+        scene_time = ""
+        if self.app.scene_idx >= 0 and self.app.scenes and self.app.scene_idx < len(self.app.scenes):
+            scene_time = self.app.scenes[self.app.scene_idx].get("time", "")
+        elif self.app.current_scene:
+            scene_time = self.app.current_scene.get("time", "")
         now = datetime.now().strftime("%H:%M")
         parts = [profile_name]
         if scene_time:
@@ -135,7 +173,6 @@ class ChatManager:
         self._ensure_chats_dir()
         if self._loaded_chat_path is not None:
             filepath = self._loaded_chat_path
-            self._loaded_chat_path = None
         else:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             filepath = self.chats_dir / f"chat_{ts}.json"
@@ -147,6 +184,7 @@ class ChatManager:
             "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "message_count": len(self.app.history),
             "scene_idx": self.app.scene_idx,
+            "current_scene": self.app.current_scene,
             "turn_idx": self.app.turn_idx,
             "turn_count": self.app.turn_count,
             "history": list(self.app.history),
@@ -159,13 +197,19 @@ class ChatManager:
         _caller_profile = config.app_config.get("active_profile", "")
 
         def _on_title_ready(title):
-            if config.app_config.get("active_profile", "") != _caller_profile:
-                return
+            # 总是回写标题（filepath 在保存时已确定，指向正确的剧本目录）
             saved_data["title"] = title
             saved_data["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             save_json(filepath, saved_data)
             self._last_save_time = time.time()
-            self._clear_autosave()
+            self._last_saved_count = len(saved_data.get("history", []))
+            self._last_autosave_len = self._last_saved_count
+            # 仅当仍在同一剧本时清除该剧本的自动存档
+            if config.app_config.get("active_profile", "") == _caller_profile:
+                self._clear_autosave()
+            else:
+                # 已切换剧本：清除保存目标剧本（旧活跃剧本）的自动存档
+                self._clear_autosave(filepath.parent)
             if show_feedback:
                 self.bus.emit("saved", {"title": title, "success": True,
                                         "message": "保存成功", "path": str(filepath)})
@@ -229,8 +273,15 @@ class ChatManager:
         saved_scene = data.get("scene_idx", 0)
         if 0 <= saved_scene < len(app.scenes):
             app.scene_idx = saved_scene
+        # 恢复动态场景（若保存时存在）
+        saved_current_scene = data.get("current_scene")
+        if saved_current_scene:
+            app.current_scene = saved_current_scene
 
         self._loaded_chat_path = filepath
+        # 加载后视为已保存（消息数与存档一致）
+        self._last_saved_count = len(app.history)
+        self._last_autosave_len = len(app.history)
         return True
 
     def delete_chat(self, filepath) -> bool:
@@ -257,13 +308,20 @@ class ChatManager:
         title = self._fallback_chat_title()
         self._save_chat_to_file(filepath, title)
         self._last_autosave_len = len(self.app.history)
+        self._last_saved_count = len(self.app.history)
         self._last_save_time = time.time()
 
-    def _clear_autosave(self):
-        """删除自动存档（用户已手动保存）"""
-        if not self.chats_dir:
+    def _clear_autosave(self, chats_dir=None):
+        """删除自动存档（用户已手动保存）。
+
+        Args:
+            chats_dir: 指定存档目录；默认用当前活跃剧本的 chats_dir。
+            保存回写标题时传入 filepath.parent 以清除保存目标剧本的自动存档。
+        """
+        target = chats_dir or self.chats_dir
+        if not target:
             return
-        p = self.chats_dir / "_autosave.json"
+        p = target / "_autosave.json"
         if p.exists():
             try:
                 p.unlink()
@@ -271,8 +329,15 @@ class ChatManager:
                 pass
 
     def has_unsaved_messages(self) -> bool:
-        """是否有未保存消息（30 秒内有新消息且未保存）"""
-        return bool(self.app.history) and (time.time() - self._last_save_time > 30)
+        """是否有未保存消息。
+
+        判断依据：有对话历史 且 消息数与上次保存时不同。
+        """
+        if not self.app.history:
+            return False
+        if self._last_saved_count < 0:
+            return True  # 从未保存过
+        return len(self.app.history) != self._last_saved_count
 
     def check_autosave_on_start(self):
         """启动时检测自动存档，有则发 "autosave_prompt" 事件让 UI 询问。"""
@@ -299,6 +364,9 @@ class ChatManager:
         ok = self.load_chat(Path(path))
         if ok:
             self._clear_autosave()
+            # 清除 _loaded_chat_path：自动存档文件已被删除，
+            # 后续保存应创建新的时间戳文件而非写入已删除的 _autosave.json
+            self._loaded_chat_path = None
         return ok
 
     def discard_autosave(self, path: str):

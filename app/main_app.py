@@ -59,11 +59,11 @@ def main(page: ft.Page):
 
     # ── 生命周期：自动存档 ──
     def _on_window_event(e):
-        if e.data == "close":
+        if e.type == ft.WindowEventType.CLOSE:
             try:
                 app_state.auto_save()
             except Exception:
                 pass
 
-    page.on_window_event = _on_window_event
+    page.window.on_event = _on_window_event
     page.on_disconnect = lambda e: app_state.auto_save()

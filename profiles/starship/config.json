@@ -5,7 +5,9 @@
     "welcome_text": "「探索号」正在穿越猎户座星云～\n 舰桥成员已就位，点击「开始」启动任务！",
     "director_mode": false,
     "user_mode": false,
-    "display_name": "星际飞船"
+    "display_name": "星际飞船",
+    "random_event": false,
+    "dynamic_scene": false
   },
   "turn": {
     "order": [

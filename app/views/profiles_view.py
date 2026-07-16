@@ -14,6 +14,7 @@ import config
 from app.views import ViewBase
 from app.theme import RADIUS_CARD
 from app.components.profile_card import ProfileCard, gather_profile_meta
+from app.components.progress_dialog import ProgressDialog
 
 __all__ = ["ProfilesView"]
 
@@ -47,11 +48,11 @@ class ProfilesView(ViewBase):
                     ft.Text("剧本库", size=20, weight=ft.FontWeight.W_700),
                     ft.Container(expand=True),
                     ft.FilledTonalButton(
-                        content="新建", icon=ft.Icons.ADD,
+                        content=ft.Text("新建"), icon=ft.Icons.ADD,
                         on_click=lambda e: self._new_profile_dialog(),
                     ),
                     ft.FilledButton(
-                        content="✨ AI 创建", icon=ft.Icons.AUTO_AWESOME,
+                        content=ft.Text("✨ AI 创建"), icon=ft.Icons.AUTO_AWESOME,
                         on_click=lambda e: self._ai_create_dialog(),
                     ),
                 ],
@@ -94,12 +95,12 @@ class ProfilesView(ViewBase):
                 expand=True,
             )
         return ft.Column(
-            controls=[ft.ResponsiveRow(columns=cards, spacing=12, run_spacing=12)],
+            controls=[ft.ResponsiveRow(controls=cards, spacing=12, run_spacing=12)],
             scroll=ft.ScrollMode.AUTO,
             expand=True,
         )
 
-    # ── 详情（5 分区）──
+    # ── 详情（4 分区）──
     def _build_detail(self, folder: str) -> ft.Control:
         meta = gather_profile_meta(folder)
         self._detail_section = 0
@@ -108,7 +109,7 @@ class ProfilesView(ViewBase):
             selected=[0],
             segments=[
                 ft.Segment(value=i, label=ft.Text(l, size=12))
-                for i, l in enumerate(["概览", "场景", "角色", "发言", "随机"])
+                for i, l in enumerate(["概览", "场景", "角色", "发言"])
             ],
             allow_multiple_selection=False,
             allow_empty_selection=False,
@@ -120,11 +121,11 @@ class ProfilesView(ViewBase):
                 ft.Container(
                     content=ft.Row(
                         controls=[
-                            ft.TextButton(content="← 返回", icon=ft.Icons.ARROW_BACK,
+                            ft.TextButton(content=ft.Text("← 返回"), icon=ft.Icons.ARROW_BACK,
                                           on_click=lambda e: self._back_to_list()),
                             ft.Text(meta["title"], size=20, weight=ft.FontWeight.W_700),
                             ft.Container(expand=True),
-                            ft.FilledButton(content="进入对话", icon=ft.Icons.PLAY_ARROW,
+                            ft.FilledButton(content=ft.Text("进入对话"), icon=ft.Icons.PLAY_ARROW,
                                             on_click=lambda e: self._enter_chat(folder)),
                         ],
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -141,7 +142,14 @@ class ProfilesView(ViewBase):
 
     def _on_section_change(self, e):
         sel = e.control.selected
-        self._detail_section = sel[0] if sel else 0
+        val = 0
+        if isinstance(sel, (list, tuple)):
+            val = sel[0] if sel else 0
+        elif isinstance(sel, set):
+            val = next(iter(sel), 0)
+        elif isinstance(sel, (int, str)):
+            val = sel
+        self._detail_section = int(val)
         self._render_detail_body()
 
     def _render_detail_body(self):
@@ -154,9 +162,9 @@ class ProfilesView(ViewBase):
             self._detail_body.content = self._section_characters()
         elif idx == 3:
             self._detail_body.content = self._section_turn()
-        elif idx == 4:
-            self._detail_body.content = self._section_random()
         try:
+            self._detail_body.update()
+            self._body.update()
             self.page.update()
         except Exception:
             pass
@@ -176,10 +184,33 @@ class ProfilesView(ViewBase):
                 self.state.data._save_profile_config()
             except Exception:
                 pass
-            self._toast("已保存")
+            self._snack("已保存")
 
         def _ai_infer(e=None):
-            self._toast("✨ AI 推断世界观 · 需要 API Key（开发中）")
+            if not config.API_KEY:
+                self._snack("请先在设置中配置 API Key")
+                return
+            dlg = ProgressDialog(self.page, title="✨ AI 推断世界观")
+            dlg.show(status="正在分析剧本信息…", indeterminate=True)
+
+            def _on_result(world):
+                if world:
+                    self.state._profile_config.setdefault("world", {})["setting"] = world
+                    try:
+                        self.state.data._save_profile_config()
+                    except Exception:
+                        pass
+                    dlg.complete("已推断世界观", on_close=self._render_detail_body)
+                else:
+                    dlg.fail("未能生成世界观")
+
+            def _on_error(msg):
+                dlg.fail("推断失败：" + str(msg)[:60])
+
+            try:
+                self.state.ai.infer_world_async(_on_result, _on_error)
+            except Exception as ex:
+                dlg.fail("推断失败：" + str(ex)[:60])
 
         return ft.Column(
             controls=[
@@ -188,8 +219,8 @@ class ProfilesView(ViewBase):
                 world_f,
                 ft.Row(
                     controls=[
-                        ft.FilledButton(content="保存", icon=ft.Icons.SAVE, on_click=_save),
-                        ft.OutlinedButton(content="✨ AI 推断", icon=ft.Icons.AUTO_AWESOME, on_click=_ai_infer),
+                        ft.FilledButton(content=ft.Text("保存"), icon=ft.Icons.SAVE, on_click=_save),
+                        ft.OutlinedButton(content=ft.Text("✨ AI 推断"), icon=ft.Icons.AUTO_AWESOME, on_click=_ai_infer),
                     ],
                     spacing=8,
                 ),
@@ -240,9 +271,9 @@ class ProfilesView(ViewBase):
             ))
         header = ft.Row(
             controls=[
-                ft.FilledTonalButton(content="添加场景", icon=ft.Icons.ADD, on_click=lambda e: self._edit_scene(None)),
-                ft.OutlinedButton(content="✨ AI 生成", icon=ft.Icons.AUTO_AWESOME,
-                                  on_click=lambda e: self._toast("✨ AI 生成场景 · 开发中")),
+                ft.FilledTonalButton(content=ft.Text("添加场景"), icon=ft.Icons.ADD, on_click=lambda e: self._edit_scene(None)),
+                ft.OutlinedButton(content=ft.Text("✨ AI 生成"), icon=ft.Icons.AUTO_AWESOME,
+                                  on_click=lambda e: self._ai_generate_scenes()),
             ],
             spacing=8,
         )
@@ -263,16 +294,16 @@ class ProfilesView(ViewBase):
             cc = CharacterCard(
                 self.page, c, i, total,
                 on_edit=self._edit_character,
-                on_ai=lambda name: self._toast(f"✨ 补全 {name} · 开发中"),
+                on_ai=self._ai_complete_character,
                 on_menu=self._on_char_menu,
             )
             cards.append(ft.Column(controls=[cc.root], col={"xs": 6, "sm": 6, "md": 4, "lg": 3}))
         add_card = AddCharacterCard(self.page, on_add=lambda: self._edit_character(None))
-        ai_card = AIGenerateCharacterCard(self.page, on_generate=lambda: self._toast("✨ AI 生成角色 · 开发中"))
+        ai_card = AIGenerateCharacterCard(self.page, on_generate=self._ai_generate_characters)
         cards.append(ft.Column(controls=[add_card.root], col={"xs": 6, "sm": 6, "md": 4, "lg": 3}))
         cards.append(ft.Column(controls=[ai_card.root], col={"xs": 6, "sm": 6, "md": 4, "lg": 3}))
         return ft.Column(
-            controls=[ft.ResponsiveRow(columns=cards, spacing=12, run_spacing=12)],
+            controls=[ft.ResponsiveRow(controls=cards, spacing=12, run_spacing=12)],
             scroll=ft.ScrollMode.AUTO,
             expand=True,
         )
@@ -288,38 +319,139 @@ class ProfilesView(ViewBase):
             expand=True,
         )
 
-    # ── 随机 ──
-    def _section_random(self) -> ft.Control:
-        sw = ft.Switch(
-            label="随机事件引擎",
-            value=self.state.random_event_enabled,
-            on_change=self._on_random_toggle,
+    # ── AI 生成场景 ──
+    def _ai_generate_scenes(self):
+        if not config.API_KEY:
+            self._snack("请先在设置中配置 API Key")
+            return
+        dlg = ProgressDialog(self.page, title="✨ AI 生成场景")
+        dlg.show(
+            status="正在生成场景…",
+            steps=["分析剧本与角色", "生成场景", "写入剧本"],
+            indeterminate=True,
         )
-        npc = self.state._active_npc
-        npc_label = f"● 路人「{npc['name']}」活跃" if npc else "未启用"
-        return ft.Column(
-            controls=[
-                sw,
-                ft.Text("启用后，对话中会自动注入意外事件或路人 NPC",
-                        size=11, color=ft.Colors.ON_SURFACE_VARIANT),
-                ft.Container(height=8),
-                ft.Text("当前状态（只读）", size=12, weight=ft.FontWeight.W_600,
-                        color=ft.Colors.ON_SURFACE_VARIANT),
-                ft.Text(npc_label if self.state.random_event_enabled else "未启用",
-                        size=13, color=ft.Colors.ON_SURFACE_VARIANT),
-            ],
-            spacing=6,
-            scroll=ft.ScrollMode.AUTO,
-            expand=True,
-        )
+        dlg.set_step(0, "正在分析剧本与角色…")
 
-    def _on_random_toggle(self, e):
-        self.state.random_event_enabled = e.control.value
-        self.state._profile_config.setdefault("app", {})["random_event"] = e.control.value
+        def _on_result(scenes):
+            if not scenes:
+                dlg.fail("未能生成场景")
+                return
+            dlg.set_step(1, "正在写入剧本…")
+            try:
+                for sc in scenes:
+                    if isinstance(sc, dict) and sc.get("time"):
+                        self.state.scenes.append(sc)
+                self.state.data._save_scenes()
+                n = len(scenes)
+                dlg.complete(f"已生成 {n} 个场景", on_close=self._render_detail_body)
+            except Exception as ex:
+                dlg.fail("写入失败：" + str(ex)[:60])
+
+        def _on_error(msg):
+            dlg.fail("生成失败：" + str(msg)[:60])
+
         try:
-            self.state.data._save_profile_config()
-        except Exception:
-            pass
+            self.state.ai.generate_scenes_async(_on_result, _on_error)
+        except Exception as ex:
+            dlg.fail("生成失败：" + str(ex)[:60])
+
+    # ── AI 生成角色 ──
+    def _ai_generate_characters(self):
+        if not config.API_KEY:
+            self._snack("请先在设置中配置 API Key")
+            return
+        dlg = ProgressDialog(self.page, title="✨ AI 生成角色")
+        dlg.show(
+            status="正在生成角色…",
+            steps=["分析剧本与场景", "生成角色", "写入剧本"],
+            indeterminate=True,
+        )
+        dlg.set_step(0, "正在分析剧本与场景…")
+
+        def _on_result(chars):
+            if not chars:
+                dlg.fail("未能生成角色")
+                return
+            dlg.set_step(1, "正在写入剧本…")
+            try:
+                added = 0
+                for c in chars:
+                    if not isinstance(c, dict):
+                        continue
+                    name = c.get("name", "")
+                    if not name or name in self.state.characters:
+                        continue
+                    c.setdefault("color", "#888888")
+                    c.setdefault("bg_color", "#f5f5f5")
+                    self.state.data._save_character(name + ".json", c)
+                    # 加入发言顺序
+                    if name not in self.state.turn_order:
+                        self.state.turn_order.append(name)
+                    added += 1
+                self.state.data._save_turn_order()
+                self.state.data._reload_data()
+                dlg.complete(f"已生成 {added} 个角色", on_close=self._render_detail_body)
+            except Exception as ex:
+                dlg.fail("写入失败：" + str(ex)[:60])
+
+        def _on_error(msg):
+            dlg.fail("生成失败：" + str(msg)[:60])
+
+        try:
+            self.state.ai.generate_characters_async(_on_result, _on_error)
+        except Exception as ex:
+            dlg.fail("生成失败：" + str(ex)[:60])
+
+    # ── AI 补全角色 ──
+    def _ai_complete_character(self, name):
+        if not config.API_KEY:
+            self._snack("请先在设置中配置 API Key")
+            return
+        dname = self.state.characters.get(name, {}).get("display_name", name)
+        dlg = ProgressDialog(self.page, title=f"✨ 补全 {dname}")
+        dlg.show(
+            status="正在补全角色设定…",
+            steps=["分析现有信息", "生成补全内容", "保存角色"],
+            indeterminate=True,
+        )
+        dlg.set_step(0, "正在分析现有信息…")
+
+        def _on_result(data):
+            if not data:
+                dlg.fail("未能生成补全内容")
+                return
+            dlg.set_step(1, "正在保存角色…")
+            try:
+                # 合并：保留原字段，用 AI 结果填充缺失项
+                original = self.state.characters.get(name, {})
+                merged = dict(original)
+                for k in ("name", "display_name", "color", "description",
+                          "personality", "system_prompt"):
+                    if data.get(k):
+                        merged[k] = data[k]
+                merged.setdefault("bg_color", original.get("bg_color", "#f5f5f5"))
+                fname = (merged.get("name") or name) + ".json"
+                self.state.data._save_character(fname, merged)
+                # 如果改名了，删除旧文件
+                new_name = merged.get("name", name)
+                if new_name != name:
+                    self.state.data._delete_character(name)
+                    if name in self.state.turn_order:
+                        idx = self.state.turn_order.index(name)
+                        self.state.turn_order[idx] = new_name
+                        self.state.data._save_turn_order()
+                self.state.data._reload_data()
+                dlg.complete(f"已补全 {dname}", on_close=self._render_detail_body)
+            except Exception as ex:
+                dlg.fail("保存失败：" + str(ex)[:60])
+
+        def _on_error(msg):
+            dlg.fail("补全失败：" + str(msg)[:60])
+
+        try:
+            self.state.ai.complete_character_async(name, _on_result, _on_error)
+        except Exception as ex:
+            dlg.fail("补全失败：" + str(ex)[:60])
 
     # ── 场景编辑 ──
     def _edit_scene(self, idx):
@@ -357,6 +489,9 @@ class ProfilesView(ViewBase):
         def _ok(e=None):
             if 0 <= idx < len(self.state.scenes):
                 self.state.scenes.pop(idx)
+                # 调整 scene_idx 避免越界
+                if self.state.scene_idx >= len(self.state.scenes):
+                    self.state.scene_idx = max(0, len(self.state.scenes) - 1)
                 try:
                     self.state.data._save_scenes()
                 except Exception:
@@ -455,15 +590,99 @@ class ProfilesView(ViewBase):
 
     # ── 进入对话 ──
     def _enter_chat(self, folder: str):
-        # 已在 _open_detail 加载该剧本，直接切到聊天
+        active = config.app_config.get("active_profile", "")
+        if folder == active:
+            # 同一剧本，直接回聊天（on_enter 会恢复数据）
+            self._detail_folder = None
+            self.router.navigate("/chat")
+            return
+        # 不同剧本：提示是否保存当前对话
+        has_chat = bool(self.state.history)
+        if not has_chat:
+            self._do_switch_and_enter(folder)
+            return
+
+        def save_and_switch(e=None):
+            self._close_dialog()
+            # 显示保存进度对话框
+            save_dlg = ProgressDialog(self.page, title="💾 保存对话")
+            save_dlg.show(
+                status="正在写入对话数据…",
+                steps=["写入对话数据", "生成对话标题", "切换剧本"],
+                indeterminate=True,
+            )
+            save_dlg.set_step(0, "正在写入对话数据…")
+
+            _switched = [False]
+            def _do_switch():
+                if _switched[0]:
+                    return
+                _switched[0] = True
+                self._do_switch_and_enter(folder)
+
+            def _on_saving(_data):
+                save_dlg.set_step(1, "正在生成对话标题…")
+
+            def _on_saved(data):
+                ok = data.get("success", False) if isinstance(data, dict) else False
+                title = data.get("title", "") if isinstance(data, dict) else ""
+                # 取消订阅
+                try:
+                    self.state.bus.off("saving", _on_saving)
+                    self.state.bus.off("saved", _on_saved)
+                except Exception:
+                    pass
+                if ok:
+                    save_dlg.set_step(2, "正在切换剧本…")
+                    save_dlg.complete(
+                        f"保存成功：{title}" if title else "保存成功",
+                        on_close=_do_switch,
+                        auto_close_ms=800,
+                    )
+                else:
+                    msg = data.get("message", "保存失败") if isinstance(data, dict) else "保存失败"
+                    save_dlg.fail(msg, on_close=_do_switch)
+
+            # 订阅保存事件
+            self.state.bus.on("saving", _on_saving)
+            self.state.bus.on("saved", _on_saved)
+            try:
+                self.state.chat.save_current_chat()
+            except Exception as ex:
+                try:
+                    self.state.bus.off("saving", _on_saving)
+                    self.state.bus.off("saved", _on_saved)
+                except Exception:
+                    pass
+                save_dlg.fail("保存失败：" + str(ex)[:60], on_close=_do_switch)
+
+        def switch_direct(e=None):
+            self._close_dialog()
+            self._do_switch_and_enter(folder)
+
+        dlg = ft.AlertDialog(
+            title=ft.Text("切换剧本"),
+            content=ft.Text("当前对话将丢失，是否保存后再切换？"),
+            actions=[
+                ft.TextButton("取消", on_click=lambda e: self._close_dialog()),
+                ft.OutlinedButton("不保存", on_click=switch_direct),
+                ft.FilledButton("保存并切换", on_click=save_and_switch),
+            ],
+        )
+        self.page.show_dialog(dlg)
+
+    def _do_switch_and_enter(self, folder: str):
+        try:
+            self.state.switch_profile(folder)
+        except Exception as ex:
+            print(f"[profiles] 切换剧本失败: {ex}")
         self._detail_folder = None
         self.router.navigate("/chat")
 
     def _open_detail(self, folder: str):
-        # 加载该剧本到 state，使编辑作用于该剧本
+        # 加载该剧本数据到 state 用于查看/编辑，不改变活跃剧本、不停止对话
         try:
-            if folder != config.app_config.get("active_profile"):
-                self.state.load_profile(folder)
+            self.state.load_profile_for_edit(folder)
         except Exception as ex:
             print(f"[profiles] 加载剧本失败: {ex}")
         self._detail_folder = folder
@@ -512,7 +731,7 @@ class ProfilesView(ViewBase):
             if folder:
                 self._render()
             else:
-                self._toast("创建失败：名称可能重复")
+                self._snack("创建失败：名称可能重复")
         dlg = ft.AlertDialog(
             title=ft.Text("新建剧本"),
             content=ft.Column(controls=[field, ft.Text("可稍后在剧本详情中添加角色与场景",
@@ -535,7 +754,7 @@ class ProfilesView(ViewBase):
                 return
             ok = self.state.data.rename_profile(folder, name)
             self._close_dialog()
-            self._toast("已重命名" if ok else "重命名失败")
+            self._snack("已重命名" if ok else "重命名失败")
             self._render()
         dlg = ft.AlertDialog(
             title=ft.Text("重命名剧本"),
@@ -551,16 +770,16 @@ class ProfilesView(ViewBase):
     def _delete_dialog(self, folder: str):
         meta = gather_profile_meta(folder)
         if len(self.state.data.get_profile_list()) <= 1:
-            self._toast("至少保留一个剧本")
+            self._snack("至少保留一个剧本")
             return
         def _ok(e=None):
             ok = self.state.data.delete_profile(folder)
             self._close_dialog()
-            self._toast("已删除" if ok else "删除失败")
+            self._snack("已删除" if ok else "删除失败")
             if folder == config.app_config.get("active_profile"):
                 rest = self.state.data.get_profile_list()
                 if rest:
-                    self.state.load_profile(rest[0])
+                    self.state.switch_profile(rest[0])
             self._render()
         dlg = ft.AlertDialog(
             title=ft.Text("删除剧本"),
@@ -578,7 +797,7 @@ class ProfilesView(ViewBase):
         new_name = meta["title"] + " 副本"
         new_folder = self.state.data.create_profile(new_name)
         if not new_folder:
-            self._toast("复制失败：名称冲突")
+            self._snack("复制失败：名称冲突")
             return
         src = config.PROFILES_DIR / folder
         dst = config.PROFILES_DIR / new_folder
@@ -588,6 +807,9 @@ class ProfilesView(ViewBase):
                 if sdir.exists():
                     (dst / sub).mkdir(exist_ok=True)
                     for f in sdir.glob("*.json"):
+                        # 不复制自动存档（避免副本启动时弹出恢复提示）
+                        if f.name == "_autosave.json":
+                            continue
                         shutil.copy2(str(f), str(dst / sub / f.name))
             shutil.copy2(str(src / "scenes.json"), str(dst / "scenes.json"))
             # 复制 config 但改 title
@@ -597,9 +819,9 @@ class ProfilesView(ViewBase):
             save_json(dst / "config.json", pc)
         except Exception as ex:
             print(f"[profiles] 复制失败: {ex}")
-            self._toast("复制失败")
+            self._snack("复制失败")
             return
-        self._toast("已复制")
+        self._snack("已复制")
         self._render()
 
     # ── 导出 ──
@@ -617,15 +839,15 @@ class ProfilesView(ViewBase):
                 for p in src.rglob("*"):
                     if p.is_file():
                         zf.write(p, arcname=p.relative_to(src))
-            self._toast(f"已导出：{out_path}")
+            self._snack(f"已导出：{out_path}")
         except Exception as ex:
             print(f"[profiles] 导出失败: {ex}")
-            self._toast("导出失败")
+            self._snack("导出失败")
 
     # ── AI 创建（三步）──
     def _ai_create_dialog(self):
         if not config.API_KEY:
-            self._toast("请先在设置中配置 API Key")
+            self._snack("请先在设置中配置 API Key")
             return
         self._ai_step1()
 
@@ -661,86 +883,65 @@ class ProfilesView(ViewBase):
         self.page.show_dialog(dlg)
 
     def _ai_step2(self, desc: str):
-        progress = ft.ProgressBar(width=300)
-        status = ft.Text("正在生成世界观与场景…", size=13)
-        checks = ft.Column(
-            controls=[
-                ft.Row([ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.TERTIARY), ft.Text("解析描述")],
-                       spacing=8),
-                ft.Row([ft.Icon(ft.Icons.RADIO_BUTTON_UNCHECKED, color=ft.Colors.OUTLINE),
-                        ft.Text("生成世界观与场景")], spacing=8),
-                ft.Row([ft.Icon(ft.Icons.RADIO_BUTTON_UNCHECKED, color=ft.Colors.OUTLINE),
-                        ft.Text("生成角色")], spacing=8),
-                ft.Row([ft.Icon(ft.Icons.RADIO_BUTTON_UNCHECKED, color=ft.Colors.OUTLINE),
-                        ft.Text("整理发言顺序")], spacing=8),
-            ],
-            spacing=6,
+        pdlg = ProgressDialog(self.page, title="✨ 生成中")
+        pdlg.show(
+            status="正在解析描述…",
+            steps=["解析描述", "生成世界观与场景", "生成角色", "整理发言顺序", "写入剧本"],
+            indeterminate=True,
         )
+        pdlg.set_step(0, "正在解析描述…")
 
         def _on_result(data):
             # 创建剧本并填充
             try:
+                pdlg.set_step(1, "正在生成世界观与场景…")
                 title = data.get("title", "新剧本")
                 folder = self.state.data.create_profile(title)
                 if not folder:
-                    self._close_dialog()
-                    self._toast("创建失败：名称冲突")
+                    pdlg.fail("创建失败：名称冲突")
                     return
-                self.state.load_profile(folder)
+                self.state.switch_profile(folder)
                 # 世界观
                 self.state._profile_config.setdefault("world", {})["setting"] = data.get("world", "")
                 # 场景
                 scenes = data.get("scenes", [])
                 self.state.scenes = scenes if scenes else self.state.scenes
                 self.state.data._save_scenes()
+
+                pdlg.set_step(2, "正在生成角色…")
                 # 角色
                 for c in data.get("characters", []):
                     name = c.get("name", "char")
                     c.setdefault("color", "#888888")
                     self.state.data._save_character(name + ".json", c)
+
+                pdlg.set_step(3, "正在整理发言顺序…")
                 # 发言顺序
                 order = data.get("turn_order", [c.get("name") for c in data.get("characters", [])])
                 self.state.turn_order = [n for n in order if n]
                 self.state.data._save_turn_order()
                 self.state.data._save_profile_config()
                 self.state.data._reload_data()
-                self._close_dialog()
-                self._ai_step3(folder, title, len(data.get("characters", [])), len(scenes))
+
+                pdlg.set_step(4, "正在写入剧本…")
+                n_chars = len(data.get("characters", []))
+                n_scenes = len(scenes)
+                pdlg.complete(
+                    f"已生成「{title}」· {n_chars} 角色 · {n_scenes} 场景",
+                    on_close=lambda: self._ai_step3(folder, title, n_chars, n_scenes),
+                    auto_close_ms=0,
+                )
             except Exception as ex:
                 print(f"[ai_create] 填充剧本失败: {ex}")
-                self._close_dialog()
-                self._toast("生成失败：" + str(ex)[:80])
+                pdlg.fail("生成失败：" + str(ex)[:80])
 
         def _on_error(msg):
-            self._close_dialog()
-            self._toast("生成失败：" + str(msg)[:80])
+            pdlg.fail("生成失败：" + str(msg)[:80])
 
-        dlg = ft.AlertDialog(
-            title=ft.Text("✨ 生成中…"),
-            content=ft.Column(controls=[status, progress, checks], tight=True, spacing=12),
-            actions=[],
-        )
-        self.page.show_dialog(dlg)
-        # 模拟步骤推进 + 实际调用
-        def _advance():
-            import time as _t
-            steps = [("生成世界观与场景", 1), ("生成角色", 2), ("整理发言顺序", 3)]
-            for label, idx in steps:
-                _t.sleep(0.4)
-                try:
-                    status.value = f"正在{label}…"
-                    checks.controls[idx].controls[0].icon = ft.Icons.CHECK_CIRCLE
-                    checks.controls[idx].controls[0].color = ft.Colors.TERTIARY
-                    self.page.update()
-                except Exception:
-                    pass
-        import threading
-        threading.Thread(target=_advance, daemon=True).start()
         try:
             self.state.ai.generate_profile_async(desc, _on_result, _on_error)
         except Exception as ex:
-            self._close_dialog()
-            self._toast("生成失败：" + str(ex)[:80])
+            pdlg.fail("生成失败：" + str(ex)[:80])
 
     def _ai_step3(self, folder: str, title: str, n_chars: int, n_scenes: int):
         def _enter(e=None):
@@ -773,17 +974,6 @@ class ProfilesView(ViewBase):
     def _close_dialog(self):
         try:
             self.page.pop_dialog()
-        except Exception:
-            pass
-
-    def _toast(self, msg: str):
-        # 0.85 无稳定 SnackBar API，用状态栏式提示：这里简单弹一个自动关闭 dialog
-        dlg = ft.AlertDialog(
-            content=ft.Text(msg, size=13),
-            actions=[ft.TextButton("好", on_click=lambda e: self._close_dialog())],
-        )
-        try:
-            self.page.show_dialog(dlg)
         except Exception:
             pass
 

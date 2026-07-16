@@ -64,7 +64,6 @@ class ProfileCard:
             alignment=ft.Alignment.CENTER,
             border_radius=ft.BorderRadius(top_left=RADIUS_CARD, top_right=RADIUS_CARD,
                                           bottom_left=0, bottom_right=0),
-            expand=True,
         )
 
         badges = ft.Row(
@@ -81,21 +80,6 @@ class ProfileCard:
         )
         chats = ft.Text(
             f"{self.meta['chat_count']} 个存档", size=11, color=ft.Colors.ON_SURFACE_VARIANT,
-        )
-
-        info = ft.Container(
-            content=ft.Column(
-                controls=[
-                    ft.Text(title, size=15, weight=ft.FontWeight.W_700, max_lines=1,
-                            overflow=ft.TextOverflow.ELLIPSIS),
-                    badges,
-                    world,
-                    chats,
-                ],
-                spacing=4,
-                tight=True,
-            ),
-            padding=ft.Padding.symmetric(horizontal=12, vertical=10),
         )
 
         menu_items = [
@@ -122,7 +106,7 @@ class ProfileCard:
             ],
             spacing=4,
         )
-        info2 = ft.Container(
+        info = ft.Container(
             content=ft.Column(
                 controls=[title_row, badges, world, chats],
                 spacing=4,
@@ -133,7 +117,7 @@ class ProfileCard:
 
         card = ft.Card(
             content=ft.Column(
-                controls=[cover, info2],
+                controls=[cover, info],
                 spacing=0,
                 tight=True,
             ),

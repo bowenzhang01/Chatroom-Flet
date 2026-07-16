@@ -49,7 +49,10 @@ def hex_to_rgba(h, a=1.0):
 
 def extract_json(text: str):
     """从 AI 返回文本中提取 JSON，处理 markdown 代码块和常见格式错误。
-    返回 (dict|None, error_msg|None)"""
+
+    支持 dict 和 list 两种根类型。
+    返回 (dict|list|None, error_msg|None)
+    """
     if not text or not text.strip():
         return None, "AI返回为空"
     # Step 0: 移除 DeepSeek R1 等模型的 <think>...</think> 思考标签
@@ -57,37 +60,91 @@ def extract_json(text: str):
     text = text.strip()
     if not text:
         return None, "AI返回为空（仅含思考标签）"
+
     # Step 1: 提取 markdown 代码块
     m = _re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, _re.DOTALL)
     if m:
         text = m.group(1).strip()
-    # Step 2: 找最外层 { ... } 或 [ ... ]
-    m = _re.search(r'\{[\s\S]*\}', text)
-    if m:
-        text = m.group(0)
-    else:
+
+    # Step 2: 尝试直接解析（最理想情况：纯 JSON）
+    result = _try_parse_json(text)
+    if result is not None:
+        return result, None
+
+    # Step 3: 找最外层结构
+    # 判断根类型：看第一个非空白字符是 { 还是 [
+    stripped = text.lstrip()
+    if stripped.startswith('['):
+        # 数组：找最外层 [ ... ]（贪心匹配到最后一个 ]）
         m = _re.search(r'\[[\s\S]*\]', text)
         if m:
-            text = m.group(0)
-    # Step 3: 尝试直接解析
+            candidate = m.group(0)
+            result = _try_parse_json(candidate)
+            if result is not None:
+                return result, None
+    elif stripped.startswith('{'):
+        # 对象：找最外层 { ... }
+        m = _re.search(r'\{[\s\S]*\}', text)
+        if m:
+            candidate = m.group(0)
+            result = _try_parse_json(candidate)
+            if result is not None:
+                return result, None
+    else:
+        # 不以 { 或 [ 开头：找最先出现的结构类型
+        brace_pos = text.find('{')
+        bracket_pos = text.find('[')
+        # 选择最先出现的（-1 表示不存在）
+        if bracket_pos >= 0 and (brace_pos < 0 or bracket_pos < brace_pos):
+            # 数组在前面或只有数组
+            m = _re.search(r'\[[\s\S]*\]', text)
+            if m:
+                candidate = m.group(0)
+                result = _try_parse_json(candidate)
+                if result is not None:
+                    return result, None
+        if brace_pos >= 0:
+            m = _re.search(r'\{[\s\S]*\}', text)
+            if m:
+                candidate = m.group(0)
+                result = _try_parse_json(candidate)
+                if result is not None:
+                    return result, None
+        # 兜底：尝试另一种
+        m = _re.search(r'\[[\s\S]*\]', text)
+        if m:
+            candidate = m.group(0)
+            result = _try_parse_json(candidate)
+            if result is not None:
+                return result, None
+
+    return None, "JSON解析失败"
+
+
+def _try_parse_json(text: str):
+    """尝试解析 JSON 文本，自动修复常见错误。
+    返回 dict/list 或 None（解析失败）。"""
+    # 直接解析
     try:
-        result = json.loads(text)
-        if isinstance(result, dict):
-            return result, None
+        return json.loads(text)
     except json.JSONDecodeError:
         pass
-    # Step 4: 修复尾部多余逗号后重试
+    # 修复尾部多余逗号
     try:
         fixed = _re.sub(r',\s*([}\]])', r'\1', text)
-        return json.loads(fixed), None
+        return json.loads(fixed)
     except json.JSONDecodeError:
         pass
-    # Step 5: 尝试 json5 宽松解析（如果可用）
+    # 修复单引号 → 双引号
+    try:
+        fixed = _re.sub(r"'([^']*)'", r'"\1"', text)
+        return json.loads(fixed)
+    except json.JSONDecodeError:
+        pass
+    # 尝试 json5 宽松解析（如果可用）
     try:
         import json5
-        result = json5.loads(text)
-        if isinstance(result, dict):
-            return result, None
+        return json5.loads(text)
     except Exception:
         pass
-    return None, "JSON解析失败"
+    return None

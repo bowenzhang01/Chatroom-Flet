@@ -9,6 +9,7 @@
 
 import flet as ft
 
+import config
 from app.views import ViewBase
 from app.theme import RADIUS_PILL, profile_emoji, char_color_at
 from app.components.mode_chips import ModeChips
@@ -16,6 +17,7 @@ from app.components.transport_bar import TransportBar
 from app.components.chat_bubble import make_bubble_row, make_scene_change_row
 from app.components.scene_banner import SceneBanner
 from app.components.director_input import DirectorInput
+from app.components.progress_dialog import ProgressDialog
 
 __all__ = ["ChatView"]
 
@@ -37,10 +39,17 @@ class ChatView(ViewBase):
         self._list_view: ft.ListView = None
         self._built = False
         self._subscribed = False
+        self._dirty = True  # 首次进入需初始化；离开后需重新同步
         self._handlers = {}
         self._near_bottom = True
         self._has_msgs = False
         self._user_turn = False
+        self._saving = False  # 保存防抖标记，防止重复点击
+        self._save_dialog: ProgressDialog = None  # 保存进度对话框
+        self._async_loop = None
+        self._empty_title: ft.Text = None
+        self._empty_emoji_text: ft.Text = None
+        self._empty_avatars: ft.Control = None
 
     # ═══ 构建视图 ═══
     def build(self) -> ft.Control:
@@ -48,6 +57,12 @@ class ChatView(ViewBase):
         self._transport = TransportBar(self.page, self.state, on_action=self._on_transport_action)
         self._scene_banner = SceneBanner(self.page)
         self._director_input = DirectorInput(self.page, self.state)
+
+        import asyncio
+        try:
+            self._async_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._async_loop = None
 
         self._root = ft.Column(
             controls=[
@@ -63,6 +78,15 @@ class ChatView(ViewBase):
         )
         self._built = True
         return self._root
+
+    def _push_update(self):
+        try:
+            if self._async_loop and self._async_loop.is_running():
+                self._async_loop.call_soon_threadsafe(self.page.update)
+            else:
+                self.page.update()
+        except Exception:
+            pass
 
     # ── Header ──
     def _build_header(self) -> ft.Control:
@@ -129,7 +153,7 @@ class ChatView(ViewBase):
         if len(profiles) > 1:
             items.append(ft.PopupMenuItem(content=ft.Text("切换剧本"), icon=ft.Icons.MENU_BOOK, on_click=self._go_profiles))
         items.append(ft.PopupMenuItem(content=ft.Text("管理剧本"), icon=ft.Icons.EDIT, on_click=self._go_profiles))
-        items.append(ft.PopupMenuItem(content=ft.Divider(height=1), height=1, disabled=True))
+        items.append(ft.PopupMenuItem())
         items.append(ft.PopupMenuItem(content=ft.Text("场景设置"), icon=ft.Icons.PLACE_OUTLINED, on_click=lambda e: self._show_scene_dialog()))
         return items
 
@@ -139,7 +163,10 @@ class ChatView(ViewBase):
         if self._scene_text:
             self._scene_text.value = self._scene_label()
         try:
-            self.page.update()
+            if self._title_text:
+                self._title_text.update()
+            if self._scene_text:
+                self._scene_text.update()
         except Exception:
             pass
 
@@ -151,7 +178,7 @@ class ChatView(ViewBase):
             expand=True,
             spacing=8,
             padding=ft.Padding.symmetric(horizontal=8, vertical=8),
-            auto_scroll=False,
+            auto_scroll=True,
             on_scroll=self._on_scroll,
         )
         self._content_stack = ft.Stack(
@@ -178,6 +205,7 @@ class ChatView(ViewBase):
             pixels = float(getattr(e, "pixels", 0) or 0)
             max_ext = float(getattr(e, "max_scroll_extent", 0) or 0)
             self._near_bottom = (max_ext - pixels) < 120
+            self._list_view.auto_scroll = self._near_bottom
         except Exception:
             pass
 
@@ -189,15 +217,19 @@ class ChatView(ViewBase):
         subtitle = ft.Text("对话尚未开始", size=13, color=ft.Colors.ON_SURFACE_VARIANT)
         avatars = self._build_character_avatars()
         start_btn = ft.FilledButton(
-            content="开始对话",
+            content=ft.Text("开始对话"),
             icon=ft.Icons.PLAY_ARROW,
             on_click=lambda e: self._on_transport_action("start"),
         )
 
+        self._empty_title = title
+        self._empty_avatars = avatars
+        self._empty_emoji_text = ft.Text(emoji, size=56, text_align=ft.TextAlign.CENTER)
+
         col = ft.Column(
             controls=[
                 ft.Container(height=24),
-                ft.Text(emoji, size=56, text_align=ft.TextAlign.CENTER),
+                self._empty_emoji_text,
                 title,
                 subtitle,
                 ft.Container(height=8),
@@ -259,6 +291,35 @@ class ChatView(ViewBase):
             spacing=8,
         )
 
+    def _rebuild_empty_state(self):
+        profiles = self.state.data.get_profile_list()
+        folder = profiles[0] if profiles else ""
+        emoji = profile_emoji(folder, self.state.title)
+        if self._empty_emoji_text:
+            self._empty_emoji_text.value = emoji
+        if self._empty_title:
+            self._empty_title.value = self.state.title
+        new_avatars = self._build_character_avatars()
+        if self._empty_avatars and new_avatars:
+            parent = self._empty_avatars.parent
+            if parent is not None and hasattr(parent, 'controls'):
+                idx = parent.controls.index(self._empty_avatars)
+                parent.controls[idx] = new_avatars
+                self._empty_avatars = new_avatars
+
+    def _reset_to_empty(self):
+        self._list_view.controls.clear()
+        self._has_msgs = False
+        self._empty_state.visible = True
+        self._rebuild_empty_state()
+        self._update_status("就绪", False, False)
+        if self._count_text:
+            self._count_text.value = "0 条"
+        try:
+            self.page.update()
+        except Exception:
+            pass
+
     # ── 状态栏 ──
     def _build_status_bar(self) -> ft.Control:
         self._status_dot = ft.Container(
@@ -295,6 +356,8 @@ class ChatView(ViewBase):
         s = self.state.current_scene
         if s and s.get("time"):
             return f"📍 {s.get('time', '')} · {s.get('location', '')}".strip(" ·")
+        if self.state.scene_idx == -1:
+            return "📍 按时间生成"
         if self.state.scenes:
             idx = self.state.scene_idx
             if 0 <= idx < len(self.state.scenes):
@@ -363,13 +426,46 @@ class ChatView(ViewBase):
         )
 
     def _on_transport_action(self, action):
-        if action == "stop":
+        if action == "start":
+            try:
+                self.state.loop.start()
+            except Exception as ex:
+                print(f"[chat] 启动失败: {ex}")
+                self._update_status(f"启动失败: {ex}", False, False)
+        elif action == "pause":
+            self.state.loop.pause()
+        elif action == "resume":
+            self.state.loop.resume()
+        elif action == "stop":
             self._confirm_stop()
         elif action == "save":
-            try:
-                self.state.chat.save_current_chat()
-            except Exception as ex:
-                print(f"[chat] 保存失败: {ex}")
+            self._do_save()
+
+    def _do_save(self):
+        # 防抖：保存进行中时忽略后续点击
+        if self._saving:
+            return
+        if not self.state.history:
+            self._snack("没有对话内容可保存")
+            return
+        self._saving = True
+        # 即时反馈：禁用保存按钮 + 状态栏提示
+        self._update_status("正在保存…", self.state.running, self.state.paused)
+        # 显示保存进度对话框
+        self._save_dialog = ProgressDialog(self.page, title="💾 保存对话")
+        self._save_dialog.show(
+            status="正在写入对话数据…",
+            steps=["写入对话数据", "生成对话标题", "完成"],
+            indeterminate=True,
+        )
+        self._save_dialog.set_step(0, "正在写入对话数据…")
+        try:
+            self.state.chat.save_current_chat()
+        except Exception as ex:
+            print(f"[chat] 保存失败: {ex}")
+            if self._save_dialog:
+                self._save_dialog.fail("保存失败：" + str(ex)[:60])
+            self._saving = False
 
     def _confirm_stop(self):
         unsaved = self.state.chat.has_unsaved_messages() if hasattr(self.state.chat, "has_unsaved_messages") else False
@@ -392,11 +488,25 @@ class ChatView(ViewBase):
         self.page.show_dialog(dlg)
 
     def _save_then_stop(self, after):
+        # 先关闭停止确认对话框（不能让 after 的 _close_dialog 误关进度对话框）
+        self._close_dialog()
+        # 显示保存进度对话框（_on_saved 事件会更新它）
+        self._saving = True
+        self._save_dialog = ProgressDialog(self.page, title="💾 保存对话")
+        self._save_dialog.show(
+            status="正在写入对话数据…",
+            steps=["写入对话数据", "生成对话标题", "停止对话"],
+            indeterminate=True,
+        )
+        self._save_dialog.set_step(0, "正在写入对话数据…")
+        # 先保存（快照数据），再停止（stop 会清空 history）
         try:
             self.state.chat.save_current_chat()
         except Exception:
             pass
-        after()
+        # 立即停止对话（保存数据已快照，AI 标题异步生成不受影响）
+        self.state.loop.stop()
+        self._transport.set_running(False, False)
 
     # ═══ 主题 ═══
     def _toggle_theme(self, e):
@@ -411,7 +521,10 @@ class ChatView(ViewBase):
     # ═══ 滚动 ═══
     def _scroll_to_bottom(self):
         try:
+            self._near_bottom = True
+            self._list_view.auto_scroll = True
             self._list_view.scroll_to(offset=1_000_000, duration=200)
+            self._list_view.update()
         except Exception:
             pass
 
@@ -466,30 +579,19 @@ class ChatView(ViewBase):
         self._add_bubble(row)
 
     def _add_bubble(self, row: ft.Control):
-        # 入场动画：opacity 0→1 + offset 上滑
         row.opacity = 0
         row.offset = ft.Offset(0, 0.04)
         row.animate_opacity = ft.Animation(250, ft.AnimationCurve.EASE_OUT)
         row.animate_offset = ft.Animation(250, ft.AnimationCurve.EASE_OUT)
         self._list_view.controls.append(row)
-        # 限制最大条数，避免性能问题
         if len(self._list_view.controls) > 300:
             self._list_view.controls = self._list_view.controls[-300:]
         self._has_msgs = True
         self._empty_state.visible = False
-        try:
-            self.page.update()
-        except Exception:
-            pass
-        # 触发动画 + 自动滚底
+        self._push_update()
         row.opacity = 1
         row.offset = ft.Offset(0, 0)
-        if self._near_bottom:
-            self._scroll_to_bottom()
-        try:
-            self.page.update()
-        except Exception:
-            pass
+        self._push_update()
         self._update_count()
 
     def _on_set_status(self, text: str):
@@ -526,9 +628,11 @@ class ChatView(ViewBase):
             self._transport.set_running(False, False)
             self._update_status("已停止", False, False)
             self._director_input.hide()
+            self._reset_to_empty()
 
     def _on_api_error(self, msg: str):
-        self._update_status("API 错误", False, False)
+        # stop() 会 emit "stopped" 事件，由 _on_loop_event 处理 UI 重置
+        # 这里只弹出错误提示对话框
         dlg = ft.AlertDialog(
             title=ft.Text("API 错误"),
             content=ft.Text(msg or "连续失败，对话已停止"),
@@ -541,11 +645,26 @@ class ChatView(ViewBase):
 
     def _on_saving(self):
         self._update_status("正在保存…", self.state.running, self.state.paused)
+        if self._save_dialog:
+            self._save_dialog.set_step(1, "正在生成对话标题…")
 
     def _on_saved(self, data: dict):
+        self._saving = False
         ok = data.get("success", False) if isinstance(data, dict) else False
         msg = data.get("message", "保存成功" if ok else "保存失败") if isinstance(data, dict) else "保存完成"
-        # 用状态栏显示保存结果（SnackBar API 在 0.85 不稳定，统一走状态栏）
+        title = data.get("title", "") if isinstance(data, dict) else ""
+        had_dialog = self._save_dialog is not None
+        if self._save_dialog:
+            if ok:
+                summary = f"保存成功：{title}" if title else "保存成功"
+                self._save_dialog.set_step(2, "完成")
+                self._save_dialog.complete(summary)
+            else:
+                self._save_dialog.fail(msg)
+            self._save_dialog = None
+        # 若没有进度对话框（如外部调用保存），用 SnackBar 兜底
+        if not had_dialog:
+            self._snack(msg)
         self._update_status(msg, self.state.running, self.state.paused)
 
     def _on_autosave_prompt(self, data: dict):
@@ -555,6 +674,8 @@ class ChatView(ViewBase):
 
         def restore(e=None):
             try:
+                if self.state.loop.running:
+                    self.state.loop.stop()
                 if path:
                     self.state.chat.restore_autosave(path)
             except Exception as ex:
@@ -606,18 +727,47 @@ class ChatView(ViewBase):
     def on_enter(self):
         if not self._built:
             return
+        # 如果在剧本编辑页加载了其他剧本，恢复活跃剧本数据
+        active = config.app_config.get("active_profile", "")
+        if active and self.state.profile_dir:
+            current_folder = self.state.profile_dir.name
+            if current_folder != active:
+                saved_scene_idx = self.state.scene_idx
+                saved_current_scene = self.state.current_scene
+                self.state.data.load_profile(active)
+                self.state.scene_idx = saved_scene_idx
+                self.state.current_scene = saved_current_scene
         self._subscribe()
         self._refresh_header_menu()
         self._mode_chips.refresh()
         self._transport.refresh()
-        self._update_status("就绪", self.state.running, self.state.paused)
+        # _dirty 标记：离开 chat 后可能错过事件 / 切换了剧本 / 读取了存档
+        # 重新进入时需要同步视觉列表与 state.history
+        if self._dirty:
+            self._dirty = False
+            if not self.state.history:
+                self._reset_to_empty()
+            else:
+                self._reload_history_into_list()
+        self._update_status(
+            "已暂停" if self.state.running and self.state.paused
+            else ("运行中" if self.state.running else "就绪"),
+            self.state.running, self.state.paused
+        )
         self._update_count()
-        # 若已有 history（恢复存档后），灌入气泡
-        if self.state.history and not self._has_msgs:
-            self._reload_history_into_list()
 
     def on_leave(self):
+        # 离开聊天页时暂停对话（避免在别的页面继续消耗 API）
+        if self.state.loop.running and not self.state.loop.paused:
+            self.state.loop.pause()
+        # 标记为 dirty：返回时需重新同步
+        self._dirty = True
         self._unsubscribe()
+        # 若保存进度对话框仍打开，关闭它（避免悬挂）
+        if self._save_dialog:
+            self._save_dialog.close()
+            self._save_dialog = None
+            self._saving = False
 
     # ═══ 状态更新（Step 4 EventBus 调用）═══
     def _update_status(self, text: str, running: bool, paused: bool):
@@ -630,15 +780,9 @@ class ChatView(ViewBase):
                 self._status_dot.bgcolor = ft.Colors.SECONDARY  # 琥珀 暂停
             else:
                 self._status_dot.bgcolor = ft.Colors.OUTLINE
-        try:
-            self.page.update()
-        except Exception:
-            pass
+        self._push_update()
 
     def _update_count(self):
         if self._count_text:
             self._count_text.value = f"{self.state.message_count} 条"
-            try:
-                self.page.update()
-            except Exception:
-                pass
+            self._push_update()

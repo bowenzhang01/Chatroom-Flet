@@ -31,6 +31,12 @@ class SettingsView(ViewBase):
         self._tokens_slider: ft.Slider = None
         self._test_result: ft.Text = None
         self._test_progress: ft.ProgressRing = None
+        self._director_sw: ft.Switch = None
+        self._user_sw: ft.Switch = None
+        self._dynamic_sw: ft.Switch = None
+        self._random_sw: ft.Switch = None
+        self._mode_dd: ft.Dropdown = None
+        self._speed_dd: ft.Dropdown = None
 
     def build(self) -> ft.Control:
         self._root = ft.Column(
@@ -142,7 +148,7 @@ class SettingsView(ViewBase):
             mc2["model"] = self._model_dd.value or config.MODEL
             mc2["temperature"] = float(self._temp_slider.value)
             mc2["max_tokens"] = int(self._tokens_slider.value)
-            mc2["models"] = config.MODELS_LIST
+            mc2["models"] = [o.key for o in self._model_dd.options] if self._model_dd.options else config.MODELS_LIST
             try:
                 self.state.data._save_config()
             except Exception:
@@ -219,60 +225,93 @@ class SettingsView(ViewBase):
     def _on_theme_change(self, e):
         sel = e.control.selected
         if sel:
-            self.ui.theme_mode_key = sel[0]
+            if isinstance(sel, (list, tuple)):
+                self.ui.theme_mode_key = sel[0]
+            elif isinstance(sel, set):
+                self.ui.theme_mode_key = next(iter(sel))
             self.ui.save_theme_mode()
             self.page.theme_mode = THEME_MODES[self.ui.theme_mode_key]
             self.page.update()
 
     def _on_font_change(self, e):
-        # 字号暂存到 ui 配置（完整应用需重建主题，此处仅预览）
-        pass
+        size = int(e.control.value)
+        ui = config.app_config.setdefault("ui", {})
+        ui["font_size"] = size
+        try:
+            from utils import save_json
+            save_json(config.BASE_DIR / "config.json", config.app_config)
+        except Exception:
+            pass
 
     # ═══ 默认行为 ═══
     def _build_behavior_card(self) -> ft.Control:
-        ac = config.app_config.setdefault("app", {})
-        director_sw = ft.Switch(label="导演模式", value=ac.get("director_mode", False))
-        user_sw = ft.Switch(label="用户模式", value=ac.get("user_mode", False))
-        dynamic_sw = ft.Switch(label="动态场景", value=ac.get("dynamic_scene", False))
-        random_sw = ft.Switch(label="随机事件", value=ac.get("random_event", False))
+        # 从当前剧本配置读取（而非全局 config.app_config）
+        pc = self.state._profile_config.setdefault("app", {})
+        self._director_sw = ft.Switch(label="导演模式", value=self.state.director_mode)
+        self._user_sw = ft.Switch(label="用户模式", value=self.state.user_mode)
+        self._dynamic_sw = ft.Switch(label="动态场景", value=self.state.dynamic_scene_enabled)
+        self._random_sw = ft.Switch(label="随机事件", value=self.state.random_event_enabled)
 
         def _persist(e=None):
-            ac["director_mode"] = director_sw.value
-            ac["user_mode"] = user_sw.value
-            ac["dynamic_scene"] = dynamic_sw.value
-            ac["random_event"] = random_sw.value
+            pc["director_mode"] = self._director_sw.value
+            pc["user_mode"] = self._user_sw.value
+            pc["dynamic_scene"] = self._dynamic_sw.value
+            pc["random_event"] = self._random_sw.value
+            # 立即更新运行时状态
+            self.state.director_mode = self._director_sw.value
+            self.state.dynamic_scene_enabled = self._dynamic_sw.value
+            self.state.random_event_enabled = self._random_sw.value
+            # 用户模式：同步 turn_order 中的 You
+            if self._user_sw.value != self.state.user_mode:
+                self.state.user_mode = self._user_sw.value
+                if self._user_sw.value:
+                    if "You" in self.state.characters and "You" not in self.state.turn_order:
+                        self.state.turn_order.append("You")
+                else:
+                    if "You" in self.state.turn_order:
+                        self.state.turn_order.remove("You")
+                try:
+                    self.state.data._save_turn_order()
+                except Exception:
+                    pass
             try:
-                self.state.data._save_config()
+                self.state.data._save_profile_config()
             except Exception:
                 pass
-        for sw in (director_sw, user_sw, dynamic_sw, random_sw):
+        for sw in (self._director_sw, self._user_sw, self._dynamic_sw, self._random_sw):
             sw.on_change = _persist
 
-        mode_dd = ft.Dropdown(
-            value=config.app_config.get("default_mode", "round"),
+        self._mode_dd = ft.Dropdown(
+            value=self.state.mode if self.state.mode in ("round", "random", "dynamic") else "round",
             options=[ft.dropdown.Option(v, text=l) for l, v in [("轮流", "round"), ("随机", "random"), ("动态", "dynamic")]],
             dense=True, width=140,
             on_select=lambda e: self._save_default("default_mode", e.control.value),
         )
-        speed_dd = ft.Dropdown(
-            value=str(config.app_config.get("default_speed", 3)),
+        self._speed_dd = ft.Dropdown(
+            value=str(self.state.speed),
             options=[ft.dropdown.Option(str(i), text=f"速度 {i}") for i in range(1, 11)],
             dense=True, width=140,
             on_select=lambda e: self._save_default("default_speed", int(e.control.value)),
         )
-        return self._card("默认行为（新对话生效）", [
-            director_sw, user_sw, dynamic_sw, random_sw,
+        return self._card("对话行为（当前剧本，立即生效）", [
+            self._director_sw, self._user_sw, self._dynamic_sw, self._random_sw,
             ft.Container(height=4),
-            ft.Text("默认发言模式", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-            mode_dd,
-            ft.Text("默认速度", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-            speed_dd,
+            ft.Text("发言模式", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+            self._mode_dd,
+            ft.Text("速度", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+            self._speed_dd,
         ])
 
     def _save_default(self, key, value):
-        config.app_config[key] = value
+        pc = self.state._profile_config
+        if key == "default_mode":
+            pc.setdefault("mode", {})["default"] = value
+            self.state.mode = value
+        elif key == "default_speed":
+            pc.setdefault("speed", {})["default"] = value
+            self.state.speed = max(1, min(10, value))
         try:
-            self.state.data._save_config()
+            self.state.data._save_profile_config()
         except Exception:
             pass
 
@@ -282,7 +321,7 @@ class SettingsView(ViewBase):
             ft.Row([ft.Text("版本", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Text(_VERSION, size=12)], spacing=12),
             ft.Row([ft.Text("框架", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-                    ft.Text("Flet 0.85.3", size=12)], spacing=12),
+                    ft.Text("Flet 0.86.0", size=12)], spacing=12),
             ft.Row([ft.Text("主题", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Text("蓝白暮光 Soft Twilight", size=12)], spacing=12),
             ft.Container(height=4),
@@ -291,16 +330,6 @@ class SettingsView(ViewBase):
         ])
 
     # ═══ 工具 ═══
-    def _snack(self, msg: str):
-        dlg = ft.AlertDialog(
-            content=ft.Text(msg, size=13),
-            actions=[ft.TextButton("好", on_click=lambda e: self._close_dialog())],
-        )
-        try:
-            self.page.show_dialog(dlg)
-        except Exception:
-            pass
-
     def _close_dialog(self):
         try:
             self.page.pop_dialog()
@@ -308,4 +337,32 @@ class SettingsView(ViewBase):
             pass
 
     def on_enter(self):
-        pass
+        if not self._built:
+            return
+        # 如果在剧本编辑页加载了其他剧本，恢复活跃剧本数据
+        # 否则设置页会编辑错误剧本的配置
+        active = config.app_config.get("active_profile", "")
+        if active and self.state.profile_dir:
+            current_folder = self.state.profile_dir.name
+            if current_folder != active:
+                self.state.data.load_profile(active)
+        self._render_behavior()
+
+    def _render_behavior(self):
+        """从 state 同步行为卡片的开关/下拉值。"""
+        if self._director_sw:
+            self._director_sw.value = self.state.director_mode
+        if self._user_sw:
+            self._user_sw.value = self.state.user_mode
+        if self._dynamic_sw:
+            self._dynamic_sw.value = self.state.dynamic_scene_enabled
+        if self._random_sw:
+            self._random_sw.value = self.state.random_event_enabled
+        if self._mode_dd:
+            self._mode_dd.value = self.state.mode if self.state.mode in ("round", "random", "dynamic") else "round"
+        if self._speed_dd:
+            self._speed_dd.value = str(self.state.speed)
+        try:
+            self.page.update()
+        except Exception:
+            pass

@@ -41,14 +41,6 @@ class TransportBar:
             on_select=self._on_mode_change,
         )
 
-        self._speed_slider = ft.Slider(
-            min=1, max=10, divisions=9,
-            value=float(self.state.speed),
-            expand=True,
-            label="速度 {value}",
-            on_change=self._on_speed_change,
-        )
-
         self._play_btn = ft.IconButton(
             icon=ft.Icons.PLAY_ARROW,
             selected_icon=ft.Icons.PAUSE,
@@ -79,10 +71,7 @@ class TransportBar:
             content=ft.Row(
                 controls=[
                     self._mode_dd,
-                    ft.Container(width=4),
-                    ft.Text("速度", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-                    self._speed_slider,
-                    ft.Container(width=4),
+                    ft.Container(expand=True),
                     self._play_btn,
                     self._stop_btn,
                     self._save_btn,
@@ -101,21 +90,14 @@ class TransportBar:
         if v:
             self.state.loop.set_mode(v)
 
-    def _on_speed_change(self, e):
-        v = int(round(float(e.control.value)))
-        self.state.loop.set_speed(v)
-
     def _on_play_click(self, e):
         loop = self.state.loop
         if not loop.running:
             self._emit("start")
-            loop.start()
         elif loop.paused:
             self._emit("resume")
-            loop.resume()
         else:
             self._emit("pause")
-            loop.pause()
 
     def _on_stop_click(self, e):
         self._emit("stop")
@@ -150,5 +132,4 @@ class TransportBar:
 
     def refresh(self):
         self._mode_dd.value = self.state.mode if self.state.mode in ("round", "random", "dynamic") else "round"
-        self._speed_slider.value = float(self.state.speed)
         self.set_running(self.state.running, self.state.paused)

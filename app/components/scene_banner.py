@@ -77,23 +77,30 @@ class SceneBanner:
             self.page.update()
         except Exception:
             pass
-        # 2.5s 后滑出
         if self._timer:
             self._timer.cancel()
         self._timer = threading.Timer(2.5, self._hide)
         self._timer.daemon = True
         self._timer.start()
 
+    def cancel(self):
+        if self._timer:
+            self._timer.cancel()
+            self._timer = None
+
     def _hide(self):
         try:
+            if self.page is None:
+                return
             self.root.content.opacity = 0.0
             self.root.content.offset = ft.Offset(0, -0.06)
             self.page.update()
         except Exception:
             pass
-        # 动画后再隐藏
         def _set_invisible():
             try:
+                if self.page is None:
+                    return
                 self.root.content.visible = False
                 self.page.update()
             except Exception:
