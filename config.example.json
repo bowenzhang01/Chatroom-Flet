@@ -14,5 +14,13 @@
   "app": {
     "user_mode": true,
     "director_mode": true
+  },
+  "ui": {
+    "theme_mode": "system",
+    "font_size": 12,
+    "color_theme": "aurora"
+  },
+  "behavior": {
+    "streaming": true
   }
 }

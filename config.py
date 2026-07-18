@@ -6,6 +6,7 @@ ChatRoom - Flet Edition · 全局配置与路径常量
 """
 
 import os
+import shutil
 import sys as _sys
 from pathlib import Path
 
@@ -28,7 +29,12 @@ FONT_SC_PATH = ASSETS_DIR / "NotoSansSC-Regular.ttf"
 FONT_SC_NAME = "Noto Sans SC"  # Flet 内部引用名
 
 # ═══ 全局 JSON 配置（跨剧本共享的 API / App 设置）═══
-app_config = load_json(BASE_DIR / "config.json", default={})
+_config_path = BASE_DIR / "config.json"
+if not _config_path.exists():
+    _example_path = BASE_DIR / "config.example.json"
+    if _example_path.exists():
+        shutil.copy2(_example_path, _config_path)
+app_config = load_json(_config_path, default={})
 
 
 def resolve_key():

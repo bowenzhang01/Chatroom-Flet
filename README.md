@@ -89,7 +89,8 @@ ChatRoom 的前身是 Kivy 桌面应用 [ChatRoom](https://github.com/bowenzhang
 ### 🔒 安全性
 
 - **API Key 环境变量优先**：`DEEPSEEK_API_KEY` / `OPENAI_API_KEY` 环境变量 > config.json，避免密钥泄露到 Git
-- **config.json 已 gitignore**：本地配置文件不会上传
+- **config.json 已 gitignore**：仓库只包含模板 `config.example.json`（无密钥），实际配置文件不会被上传
+- **首次启动自动初始化**：`config.json` 缺失时自动从 `config.example.json` 复制生成
 - 支持自定义 API 地址，兼容任何 OpenAI 接口兼容的服务
 
 ---
@@ -193,7 +194,10 @@ pip install -r requirements.txt
 
 ### 4. 配置 API Key
 
-程序启动时需要 LLM API Key。三种方式任选：
+首次启动时，程序会自动从 `config.example.json` 复制一份 `config.json`
+（包含完整的默认设置：模型列表、主题、行为开关等）。**你只需填写 API Key 即可。**
+
+三种配置方式任选：
 
 **🌍 方式 A：环境变量（最安全，推荐）**
 
@@ -205,13 +209,12 @@ $env:DEEPSEEK_API_KEY = "sk-你的密钥"
 export DEEPSEEK_API_KEY="sk-你的密钥"
 ```
 
-**📄 方式 B：配置文件**
+设置后直接启动，无需修改任何文件。密钥只在当前终端会话有效，不会写入磁盘。
 
-```bash
-cp config.example.json config.json
-```
+**📄 方式 B：直接编辑 config.json**
 
-编辑 `config.json`：
+打开自动生成的 `config.json`，填写 `api_key`：
+
 ```json
 {
   "model": {
@@ -224,9 +227,11 @@ cp config.example.json config.json
 
 > `config.json` 已在 `.gitignore` 中，不会被误传到 GitHub。
 
+若 `config.json` 被误删，删除后重新启动即可从 `config.example.json` 重新生成。
+
 **🔌 方式 C：使用其他 API 服务**
 
-任何兼容 OpenAI chat/completions 接口的服务均可使用。设置 `OPENAI_API_KEY` 或修改 `api_base`：
+任何兼容 OpenAI chat/completions 接口的服务均可使用。修改 `api_base` 和 `api_key`：
 
 ```json
 {
