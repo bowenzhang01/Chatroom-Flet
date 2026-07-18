@@ -51,6 +51,8 @@ class ChatView(ViewBase):
         self._empty_emoji_text: ft.Text = None
         self._empty_avatars: ft.Control = None
         self._streaming_rows: dict = {}  # msg_id → ft.Row 映射
+        self._streaming_count = 0  # 活跃的流式气泡数，_on_scroll 据此抑制按钮闪烁
+        self._bottom_btn_visible = False  # 按钮是否已插入 Column
 
     # ═══ 构建视图 ═══
     def build(self) -> ft.Control:
@@ -99,8 +101,7 @@ class ChatView(ViewBase):
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
             ),
-            padding=ft.Padding.only(bottom=4, top=2),
-            visible=False,
+            padding=ft.Padding.only(bottom=8, top=4),
         )
 
         self._root = ft.Column(
@@ -108,7 +109,6 @@ class ChatView(ViewBase):
                 self._build_header(),
                 self._mode_chips.root,
                 self._build_content(),
-                self._to_bottom_btn,
                 self._transport.root,
                 self._director_input.root,
             ],
@@ -245,8 +245,8 @@ class ChatView(ViewBase):
             max_ext = float(getattr(e, "max_scroll_extent", 0) or 0)
             self._near_bottom = (max_ext - pixels) < 120
             self._list_view.auto_scroll = self._near_bottom
-            if self._to_bottom_btn:
-                self._to_bottom_btn.visible = not self._near_bottom
+            if self._streaming_count == 0:
+                self._sync_bottom_btn(not self._near_bottom)
         except Exception:
             pass
 
@@ -540,11 +540,28 @@ class ChatView(ViewBase):
         self.page.update()
 
     # ═══ 滚动 ═══
+    def _sync_bottom_btn(self, show: bool):
+        """动态插入/移除按钮，避免 visible=False 仍干扰滚轮事件。"""
+        if show == self._bottom_btn_visible:
+            return
+        self._bottom_btn_visible = show
+        try:
+            ctrls = self._root.controls
+            if show and self._to_bottom_btn not in ctrls:
+                if self._transport.root in ctrls:
+                    idx = ctrls.index(self._transport.root)
+                    ctrls.insert(idx, self._to_bottom_btn)
+            elif not show and self._to_bottom_btn in ctrls:
+                ctrls.remove(self._to_bottom_btn)
+            self._push_update()
+        except Exception:
+            pass
+
     def _scroll_to_bottom(self):
         try:
             self._near_bottom = True
             self._list_view.auto_scroll = True
-            self._to_bottom_btn.visible = False
+            self._sync_bottom_btn(False)
             self._list_view.scroll_to(offset=1_000_000, duration=200)
             self._push_update()
         except Exception:
@@ -601,6 +618,7 @@ class ChatView(ViewBase):
         mid = entry.get("msg_id", "")
         if mid:
             self._streaming_rows[mid] = row
+        self._streaming_count += 1
 
     def _on_msg_delta(self, entry):
         """流式增量：更新已有气泡的文本内容（无动画）。"""
@@ -608,10 +626,15 @@ class ChatView(ViewBase):
         row = self._streaming_rows.get(mid)
         if row is None:
             return
+        was_near = self._near_bottom
         text = entry.get("text", "")
         max_w = self._bubble_max_width()
         new_content = render_streaming_text(text, max_w)
         self._replace_bubble_content(row, new_content)
+        if was_near:
+            self._near_bottom = True
+            self._list_view.auto_scroll = True
+            self._sync_bottom_btn(False)
         try:
             self._push_update()
         except Exception:
@@ -623,10 +646,19 @@ class ChatView(ViewBase):
         row = self._streaming_rows.pop(mid, None)
         if row is None:
             return
+        self._streaming_count = max(0, self._streaming_count - 1)
+        was_near = self._near_bottom
         text = entry.get("text", "")
         max_w = self._bubble_max_width()
         new_content = _md(text, max_w)
         self._replace_bubble_content(row, new_content)
+        if was_near:
+            self._near_bottom = True
+            self._list_view.auto_scroll = True
+            self._sync_bottom_btn(False)
+        else:
+            if self._streaming_count == 0:
+                self._sync_bottom_btn(not self._near_bottom)
         try:
             self._push_update()
         except Exception:
