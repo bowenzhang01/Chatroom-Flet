@@ -268,15 +268,15 @@ DEBUG=dorm flet run main.py --web
 
 ## 📦 构建发布
 
-Flet 可将 Python 项目编译为独立应用。不同平台难度差异较大：
+Flet 可将 Python 项目编译为独立应用：
 
-| 平台 | 命令 | 难度 | 产物 |
-|:---|:---|:---|:---|
-| 🌐 Web | `flet build web` | 简单 | `build/web/` 静态文件 |
-| 🪟 Windows | `flet build windows` / `build.ps1` | 较复杂 | `dist/` 文件夹（含 .exe + DLL） |
-| 🍎 macOS | `flet build macos` | 中等 | `.app` 包 |
-| 📱 Android | `flet build apk` | 中等 | `.apk` |
-| 📱 iOS | `flet build ios` | 较复杂 | `.ipa`（需 macOS + Xcode） |
+| 平台 | 命令 | 产物 |
+|:---|:---|:---|
+| 🌐 Web | `flet build web` | `build/web/` 静态文件 |
+| 🪟 Windows | `flet build windows` / `build.ps1` | `dist/` 文件夹（含 .exe + DLL） |
+| 🍎 macOS | `flet build macos` | `.app` 包 |
+| 📱 Android | `flet build apk` | `.apk` |
+| 📱 iOS | `flet build ios` | `.ipa`（需 macOS + Xcode） |
 
 ### 🌐 Web — 最简单的发布方式
 
