@@ -321,19 +321,7 @@ Windows 编译需要以下前置环境：
 .\build.ps1 -ProductName "ChatRoom"
 ```
 
-脚本自动完成：
-1. 检查环境（flet / Flutter / 依赖）
-2. 建立 Flutter 项目骨架
-3. 下载缓存文件（Python standalone / bridge DLL）
-4. 打包 Python 应用（serious_python）
-5. 编译 Flutter Windows 壳（自动打 UTF-8 编码补丁）
-6. 补齐缺失的 DLL 和数据文件
-7. 安装运行时 Python 依赖 + 替换源码
-
 完成后 `dist\ChatRoom\` 就是可分发的文件夹，压缩即可。
-
-> 📝 Windows 编译容易踩的坑：GBK 编码错误 / DLL 缺失 / Python 版本漂移 / GitHub 下载超时。
-> 详细原因和解决方案见 `BUILD_WINDOWS_NOTES.md`。首次构建建议挂代理。
 
 ### 🍎 macOS
 
