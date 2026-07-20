@@ -1,0 +1,7 @@
+[project]
+name = "dorm-flet"
+version = "1.0.0"
+requires-python = ">=3.10,<3.13"
+
+[tool.flet]
+python_version = "3.12"

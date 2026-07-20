@@ -36,12 +36,11 @@ class ChatView(ViewBase):
         self._count_text: ft.Text = None
         self._empty_state: ft.Control = None
         self._content_stack: ft.Stack = None
-        self._list_view: ft.ListView = None
+        self._list_view: ft.Column = None  # 滚动容器（Column with scroll, 不是 ListView）
         self._built = False
         self._subscribed = False
         self._dirty = True  # 首次进入需初始化；离开后需重新同步
         self._handlers = {}
-        self._near_bottom = True
         self._has_msgs = False
         self._user_turn = False
         self._saving = False  # 保存防抖标记，防止重复点击
@@ -52,10 +51,15 @@ class ChatView(ViewBase):
         self._empty_avatars: ft.Control = None
         self._streaming_rows: dict = {}  # msg_id → ft.Row 映射
         self._streaming_count = 0  # 活跃的流式气泡数，_on_scroll 据此抑制按钮闪烁
-        self._bottom_btn_visible = False  # 按钮是否已插入 Column
-        self._user_scrolled = False  # 用户主动滚动（上滚）后置 True；msg_delta 据此不强制跟随
-        self._delta_update_timer = None  # delta update 节流定时器（Safari WebSocket 友好）
-        self._program_scroll = False  # 程序触发滚动时置 True，避免 _on_scroll 误判为用户上滚
+        self._bottom_btn_visible = False  # 按钮是否可见（Stack overlay，切换 visible 不影响布局）
+        self._user_scrolled = False  # 用户主动上滚后置 True；新消息不自动跟随
+        self._near_bottom = True  # 当前滚动位置是否接近底部
+        self._last_pixels = 0.0  # 上一次 on_scroll 的 pixels 值，用于方向检测
+        self._user_scroll_time = 0.0  # 上一次用户主动上滚的时间戳，防止程序滚动覆盖用户意图
+        self._last_add_time = 0.0  # 上一次 _add_bubble 的时间戳，防止列表变化导致的滚动重置被误判为用户上滚
+        self._delta_update_timer = None  # delta update + scroll 节流定时器（100ms，Web WebSocket 友好）
+        self._scroll_timer = None  # 延迟 scroll_to 定时器（等布局稳定后再滚动）
+        self._last_history_count = -1  # 上次渲染的 history 条目数，用于跳过不必要的重建
 
     # ═══ 构建视图 ═══
     def build(self) -> ft.Control:
@@ -95,7 +99,7 @@ class ChatView(ViewBase):
                         icon=ft.Icons.ARROW_DOWNWARD,
                         icon_size=18,
                         tooltip="回到底部",
-                        on_click=lambda e: self._scroll_to_bottom(),
+                        on_click=lambda e: self._scroll_to_bottom(delay=0, animated=True),
                         style=ft.ButtonStyle(
                             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
                             shape=ft.CircleBorder(),
@@ -105,6 +109,10 @@ class ChatView(ViewBase):
                 alignment=ft.MainAxisAlignment.CENTER,
             ),
             padding=ft.Padding.only(bottom=8, top=4),
+            bottom=12,
+            right=12,
+            visible=False,
+            ignore_interactions=False,
         )
 
         self._root = ft.Column(
@@ -212,19 +220,32 @@ class ChatView(ViewBase):
         except Exception:
             pass
 
-    # ── 内容区（空状态 + 气泡列表 + banner slot）──
+    # ── 内容区（空状态 + 气泡列表 + banner slot + 回到底部按钮 overlay）──
     def _build_content(self) -> ft.Control:
         self._empty_state = self._build_empty_state()
-        self._list_view = ft.ListView(
+        # 用 Column(scroll=ScrollMode.AUTO) 代替 ListView：
+        # - ListView 的 scroll_to 对动态构建的控件无效（Flet 官方文档明确说明）
+        # - Column 构建所有子控件，scroll_to 可正常工作
+        # - auto_scroll=False 固定：scroll_to 要求 auto_scroll=False 才能工作
+        #   切换 auto_scroll 会导致 Flutter 重置滚动位置为 0（顶部），故保持 False
+        #   新消息的手动滚动由 _add_bubble 调用 _scroll_to_bottom 处理
+        self._list_view = ft.Column(
             controls=[],
             expand=True,
             spacing=8,
-            padding=ft.Padding.symmetric(horizontal=8, vertical=8),
-            auto_scroll=True,
+            scroll=ft.ScrollMode.AUTO,
+            auto_scroll=False,
             on_scroll=self._on_scroll,
         )
+        # Column 无 padding 属性，用 Container 包裹提供内边距
+        list_container = ft.Container(
+            content=self._list_view,
+            expand=True,
+            padding=ft.Padding.symmetric(horizontal=8, vertical=8),
+        )
+        # Stack overlay：按钮通过 bottom/right 定位悬浮于右下角，切换 visible 不影响布局
         self._content_stack = ft.Stack(
-            controls=[self._list_view, self._empty_state, self._scene_banner.root],
+            controls=[list_container, self._empty_state, self._scene_banner.root, self._to_bottom_btn],
             expand=True,
         )
         return ft.Container(
@@ -243,26 +264,40 @@ class ChatView(ViewBase):
         return min(w * 0.62, 520)
 
     def _on_scroll(self, e):
+        """滚动事件处理。
+
+        核心策略（跨平台 Windows/macOS/Android/Web）：
+        1. 永不修改 auto_scroll 属性 —— auto_scroll=False 固定，scroll_to 可正常工作。
+        2. 本方法仅跟踪用户滚动状态用于按钮可见性，不干预滚动行为。
+        3. 方向检测：pixels 减小 = 用户上滚 → 显示"回到底部"按钮。
+        4. 时间窗口保护：_add_bubble 后 300ms 内跳过方向检测
+           （列表变化可能触发 pixels=0 的重置事件，不应误判为用户上滚）。
+        """
+        import time
         try:
             pixels = float(getattr(e, "pixels", 0) or 0)
             max_ext = float(getattr(e, "max_scroll_extent", 0) or 0)
             near_bottom = (max_ext - pixels) < 120
-            # 检测用户主动滚动：非底部 + 非程序滚动即视为用户上滚
-            # 不依赖 True→False 跳变（跳变会被程序滚动窗口消耗后无法再次置位）
-            # 用 _user_scrolled 标志作为更可靠的"用户意图"信号，避免 Web 端 WebSocket 延迟导致 _near_bottom 过时
-            if not near_bottom and not self._program_scroll:
+
+            prev_pixels = self._last_pixels
+            self._last_pixels = pixels
+            now = time.time()
+
+            # 时间窗口：_add_bubble 后 300ms 内跳过方向检测
+            recently_added = (now - self._last_add_time) < 0.30
+
+            # 方向检测：pixels 明显减小 → 用户上滚（5px 阈值过滤触摸抖动）
+            if not recently_added and not near_bottom and prev_pixels > pixels + 5:
                 self._user_scrolled = True
-            self._near_bottom = near_bottom
-            # 用户回到底部时清除主动滚动标志
-            if near_bottom:
+                self._user_scroll_time = now
+
+            # 回到底部时清除 _user_scrolled
+            if near_bottom and (now - self._user_scroll_time) > 0.35:
                 self._user_scrolled = False
-            # auto_scroll + 按钮同步：程序滚动期间跳过，避免动画中途按钮闪烁
-            if not self._program_scroll:
-                if self._list_view.auto_scroll != near_bottom:
-                    self._list_view.auto_scroll = near_bottom
-                # 流式期间也同步按钮：_user_scrolled 标志已防止 delta 自动滚动导致的误判，
-                # _sync_bottom_btn 有幂等检查（show == _bottom_btn_visible）防闪烁
-                self._sync_bottom_btn(not self._near_bottom)
+
+            self._near_bottom = near_bottom
+            # 按钮可见性：用户已上滚且有消息时显示
+            self._sync_bottom_btn(self._user_scrolled and self._has_msgs)
         except Exception:
             pass
 
@@ -365,6 +400,7 @@ class ChatView(ViewBase):
     def _reset_to_empty(self):
         self._list_view.controls.clear()
         self._has_msgs = False
+        self._last_history_count = 0
         self._reset_streaming_state()
         self._empty_state.visible = True
         self._rebuild_empty_state()
@@ -377,18 +413,26 @@ class ChatView(ViewBase):
             pass
 
     def _reset_streaming_state(self):
-        """清理流式追踪状态。
+        """清理流式追踪状态 + 滚动相关状态。
+
         stop/导航离开后 msg_end 可能因取消订阅而丢失，导致 _streaming_count 卡死、
         _streaming_rows 残留 stale row。本方法在所有重置/重载入口调用，确保按钮逻辑不被卡死。
         """
         self._streaming_rows.clear()
         self._streaming_count = 0
         self._user_scrolled = False
+        self._near_bottom = True
+        self._last_pixels = 0.0
+        self._user_scroll_time = 0.0
+        self._last_add_time = 0.0
         if self._delta_update_timer is not None:
             self._delta_update_timer.cancel()
             self._delta_update_timer = None
+        if self._scroll_timer is not None:
+            self._scroll_timer.cancel()
+            self._scroll_timer = None
         # 重置按钮可见性状态，强制 _sync_bottom_btn 重新评估
-        self._bottom_btn_visible = True  # 强制下次 _sync_bottom_btn(True) 触发插入
+        self._bottom_btn_visible = True  # 强制下次 _sync_bottom_btn(False) 触发 visible 切换
         self._sync_bottom_btn(False)
 
     # ═══ 场景/剧本 ═══
@@ -578,41 +622,100 @@ class ChatView(ViewBase):
 
     # ═══ 滚动 ═══
     def _sync_bottom_btn(self, show: bool):
-        """动态插入/移除按钮，避免 visible=False 仍干扰滚轮事件。"""
+        """切换回到底部按钮的可见性。
+
+        按钮作为 Stack overlay（bottom-right 定位），切换 visible 不影响 ListView 布局。
+        此前动态插入/移除按钮到 root Column 会在 Android 上触发 Column 重新布局，
+        导致 ListView 丢失滚动位置（回到顶部）。
+        """
         if show == self._bottom_btn_visible:
             return
         self._bottom_btn_visible = show
         try:
-            ctrls = self._root.controls
-            if show and self._to_bottom_btn not in ctrls:
-                if self._transport.root in ctrls:
-                    idx = ctrls.index(self._transport.root)
-                    ctrls.insert(idx, self._to_bottom_btn)
-            elif not show and self._to_bottom_btn in ctrls:
-                ctrls.remove(self._to_bottom_btn)
+            self._to_bottom_btn.visible = show
             self._push_update()
         except Exception:
             pass
 
-    def _scroll_to_bottom(self):
-        try:
-            self._program_scroll = True
-            self._near_bottom = True
-            self._user_scrolled = False
-            self._list_view.auto_scroll = True
-            self._sync_bottom_btn(False)
-            self._list_view.scroll_to(offset=1_000_000, duration=200)
-            self._push_update()
-            # 延迟清除 _program_scroll（滚动动画 200ms 期间避免误判）
-            import threading
-            t = threading.Timer(0.4, self._clear_program_scroll)
-            t.daemon = True
-            t.start()
-        except Exception:
-            self._program_scroll = False
+    def _scroll_to_bottom(self, delay=0.05, animated=True):
+        """手动滚动到列表底部。
 
-    def _clear_program_scroll(self):
-        self._program_scroll = False
+        使用场景：
+        - "回到底部"按钮点击（animated=True，平滑动画）
+        - _reload_history_into_list 初始加载（animated=False，瞬间跳转）
+        - _add_bubble 新消息到达（animated=False，仅当用户在底部附近时）
+
+        实现要点：
+        - auto_scroll=False 固定，scroll_to 可正常工作
+        - offset=-1 表示跳到末尾（Flet API：负值相对于末尾）
+        - delay 确保 Column 布局完成后再滚动（布局异步，立即调用可能 max_extent=0）
+        - 用户在 delay 期间上滚则取消滚动
+        """
+        self._user_scrolled = False
+        self._near_bottom = True
+        self._sync_bottom_btn(False)
+
+        import threading
+
+        # 取消待执行的 scroll
+        if self._scroll_timer is not None:
+            self._scroll_timer.cancel()
+            self._scroll_timer = None
+
+        duration = 200 if animated else 0
+
+        def _do_scroll():
+            self._scroll_timer = None
+            if self._user_scrolled:
+                return  # 用户在 delay 期间上滚 → 取消
+            try:
+                # offset=-1：跳到末尾（Flet API：负值相对于末尾）
+                coro = self._list_view.scroll_to(offset=-1, duration=duration)
+                self._schedule_coro(coro)
+            except Exception:
+                pass
+
+        if delay > 0:
+            t = threading.Timer(delay, _do_scroll)
+            t.daemon = True
+            self._scroll_timer = t
+            t.start()
+        else:
+            _do_scroll()
+
+    def _schedule_coro(self, coro):
+        """将 coroutine 安全调度到 async loop。
+
+        - Web 模式（有 async loop）：run_coroutine_threadsafe 到现有 loop
+        - 移动端/桌面原生（无 async loop）：在新线程中 asyncio.run(coro)
+          scroll_to() 内部通过 _invoke_method 发送命令到 Flutter，
+          命令发送是线程安全的，无需依赖特定 event loop
+        """
+        if coro is None:
+            return
+        try:
+            import asyncio
+            if not asyncio.iscoroutine(coro):
+                return
+            loop = self._async_loop
+            if loop is not None and loop.is_running():
+                asyncio.run_coroutine_threadsafe(coro, loop)
+            else:
+                # 无运行中的 async loop（移动端/桌面原生）
+                # 在新线程中运行协程，确保 scroll 命令发出
+                import threading
+                def _run():
+                    try:
+                        asyncio.run(coro)
+                    except Exception:
+                        pass
+                t = threading.Thread(target=_run, daemon=True)
+                t.start()
+        except Exception:
+            try:
+                coro.close()
+            except Exception:
+                pass
 
     # ═══ EventBus 订阅 ═══
     def _subscribe(self):
@@ -661,7 +764,7 @@ class ChatView(ViewBase):
     def _on_streaming_start(self, entry):
         """创建流式空白气泡，存入 _streaming_rows 以便后续更新。"""
         row = make_bubble_row(entry, self.state, self._bubble_max_width())
-        self._add_bubble(row)
+        self._add_bubble(row, fade_in=False, is_message=True)  # 流式气泡不渐入，避免空白
         mid = entry.get("msg_id", "")
         if mid:
             self._streaming_rows[mid] = row
@@ -678,26 +781,29 @@ class ChatView(ViewBase):
         max_w = self._bubble_max_width()
         new_content = render_streaming_text(text, max_w)
         self._replace_bubble_content(row, new_content)
-        # 仅当用户未主动上滚时才跟随到底部（修复 macOS Web Safari 滚动劫持）
-        # 此前 was_near 读取的 _near_bottom 在 Web 端因 WebSocket 延迟可能过时，
-        # 用 _user_scrolled 标志作为更可靠的"用户意图"信号。
-        if not self._user_scrolled and self._near_bottom:
-            self._list_view.auto_scroll = True
-            self._sync_bottom_btn(False)
-        # update 节流：合并 100ms 内的多次 delta update，减少 Safari WebSocket 压力
-        self._schedule_delta_update()
+        # 节流：合并 100ms 内的多次 delta 为一次 scroll_to + page.update()
+        # auto_scroll=False，需手动滚动跟随流式输出
+        self._schedule_delta_flush()
 
-    def _schedule_delta_update(self):
-        """合并 100ms 内的多次 delta update 为一次 page.update()，减少 Web 端 WebSocket 压力。"""
+    def _schedule_delta_flush(self):
+        """合并 100ms 内的多次 delta 为一次 scroll_to + page.update()。
+
+        - 用户未上滚 → scroll_to(offset=-1) 跟随流式输出到底部
+        - 用户已上滚 → 仅 update，不滚动（用户可自由阅读历史）
+        """
         if self._delta_update_timer is not None:
-            return  # 已有待触发 update
+            return  # 已有待触发的 flush
         import threading
+
         def _flush():
             self._delta_update_timer = None
             try:
+                if not self._user_scrolled:
+                    self._scroll_to_bottom(delay=0, animated=False)
                 self._push_update()
             except Exception:
                 pass
+
         t = threading.Timer(0.1, _flush)
         t.daemon = True
         self._delta_update_timer = t
@@ -718,20 +824,20 @@ class ChatView(ViewBase):
         max_w = self._bubble_max_width()
         new_content = _md(text, max_w)
         self._replace_bubble_content(row, new_content)
-        if not self._user_scrolled and self._near_bottom:
-            self._list_view.auto_scroll = True
-            self._sync_bottom_btn(False)
-        else:
-            if self._streaming_count == 0:
-                self._sync_bottom_btn(not self._near_bottom)
         self._finalize_msg_end(entry)
 
     def _finalize_msg_end(self, entry):
-        """msg_end 共用收尾：取消挂起的 delta update 定时器，立即 push 最终内容。"""
+        """msg_end 共用收尾：取消挂起的 delta flush 定时器，立即 scroll + push 最终内容。"""
         if self._delta_update_timer is not None:
             self._delta_update_timer.cancel()
             self._delta_update_timer = None
         try:
+            if not self._user_scrolled:
+                # 流式消息完成 → 滚动到底部显示最终内容
+                self._scroll_to_bottom(delay=0, animated=False)
+            else:
+                # 用户已上滚 → 确保按钮显示
+                self._sync_bottom_btn(True)
             self._push_update()
         except Exception:
             pass
@@ -755,23 +861,37 @@ class ChatView(ViewBase):
 
     def _add_entry(self, entry):
         row = make_bubble_row(entry, self.state, self._bubble_max_width())
-        self._add_bubble(row)
+        self._add_bubble(row, fade_in=not entry.get("streaming"), is_message=True)
 
-    def _add_bubble(self, row: ft.Control):
-        row.opacity = 0
-        row.offset = ft.Offset(0, 0.04)
-        row.animate_opacity = ft.Animation(250, ft.AnimationCurve.EASE_OUT)
-        row.animate_offset = ft.Animation(250, ft.AnimationCurve.EASE_OUT)
+    def _add_bubble(self, row: ft.Control, fade_in: bool = True, is_message: bool = True):
+        import time
+        self._last_add_time = time.time()  # 标记添加时间，_on_scroll 据此跳过方向检测窗口
+        if is_message:
+            self._last_history_count += 1  # 跟踪已渲染的 history 条目数
+        if fade_in:
+            # 非流式消息：渐入动画（opacity 0→1 + 轻微上移）
+            row.opacity = 0
+            row.offset = ft.Offset(0, 0.04)
+            row.animate_opacity = ft.Animation(250, ft.AnimationCurve.EASE_OUT)
+            row.animate_offset = ft.Animation(250, ft.AnimationCurve.EASE_OUT)
+        # 流式消息：不设 opacity=0，避免空白气泡
         self._list_view.controls.append(row)
         if len(self._list_view.controls) > 300:
             del self._list_view.controls[:-300]
         self._has_msgs = True
         self._empty_state.visible = False
         self._push_update()
-        row.opacity = 1
-        row.offset = ft.Offset(0, 0)
-        self._push_update()
+        if fade_in:
+            row.opacity = 1
+            row.offset = ft.Offset(0, 0)
+            self._push_update()
         self._update_count()
+        # auto_scroll=False，需手动滚动到底部
+        # 用户未上滚 → 滚到底部跟随新消息；用户已上滚 → 显示按钮
+        if not self._user_scrolled:
+            self._scroll_to_bottom(delay=0.05, animated=False)
+        else:
+            self._sync_bottom_btn(True)
 
     def _on_set_status(self, text: str):
         self._update_status(text or "", self.state.running, self.state.paused)
@@ -782,7 +902,7 @@ class ChatView(ViewBase):
             self._scene_banner.show(scene)
             if not scene.get("manual"):
                 row = make_scene_change_row(scene, self._bubble_max_width())
-                self._add_bubble(row)
+                self._add_bubble(row, is_message=False)  # 场景变更行不在 history 中
         self._refresh_header_menu()
 
     def _on_user_turn(self, _data):
@@ -888,23 +1008,41 @@ class ChatView(ViewBase):
 
     def _reload_history_into_list(self):
         """把 state.history 重灌进气泡列表。"""
+        import time
+        snapshot = self.state.history_snapshot()
+        current_count = len(snapshot)
+
+        # 如果 history 条目数未变，跳过重建 —— 避免切 tab 回来时 ListView 被清空重建
+        # 导致滚动位置重置（消息从顶部滑到底部）。
+        # on_leave 暂停了 loop，离开期间不会有新消息，count 不变即内容不变。
+        if current_count > 0 and current_count == self._last_history_count and self._has_msgs:
+            # 列表已是最新，只需确保滚动位置正确
+            self._scroll_to_bottom(delay=0.05, animated=False)
+            return
+
+        self._last_history_count = current_count
         self._list_view.controls.clear()
         # 清理流式追踪状态：on_enter 重载时若有未完成的流式消息（msg_end 在取消订阅期间丢失），
         # _streaming_rows 会残留 stale row 且 _streaming_count 卡死，导致回到底部按钮永久失效
         self._reset_streaming_state()
-        for entry in self.state.history_snapshot():
+        # 标记加载时间（在 _reset_streaming_state 之后，否则会被重置为 0）
+        # 防止初始滚动事件被误判为用户上滚
+        self._last_add_time = time.time()
+        for entry in snapshot:
             row = make_bubble_row(entry, self.state, self._bubble_max_width())
             row.opacity = 1
             row.offset = ft.Offset(0, 0)
             self._list_view.controls.append(row)
-        self._has_msgs = bool(self.state.history)
+        self._has_msgs = bool(snapshot)
         self._empty_state.visible = not self._has_msgs
         try:
             self.page.update()
         except Exception:
             pass
         if self._has_msgs:
-            self._scroll_to_bottom()
+            # auto_scroll=False，需手动 scroll_to(offset=-1) 滚到底部
+            # delay=0.15 等 Column 布局完成（布局异步，立即调用可能 max_extent=0）
+            self._scroll_to_bottom(delay=0.15, animated=False)
         self._update_count()
 
     # ═══ 生命周期 ═══
@@ -927,6 +1065,8 @@ class ChatView(ViewBase):
                 self.state.current_scene = saved_current_scene
                 self.state.scene_version = saved_scene_version
                 self.state._last_scene_update_turn = saved_last_scene_update_turn
+                # 剧本切换后 history 完全变化，强制重建列表
+                self._last_history_count = -1
         self._subscribe()
         check_bus_leaks(self.state.bus, expected_event_count=len(self._handlers))
         self._refresh_header_menu()
@@ -960,7 +1100,7 @@ class ChatView(ViewBase):
             self.state.loop.pause()
         # 取消场景横幅定时器，避免离开后幽灵淡出
         self._scene_banner.cancel()
-        # 取消流式 delta update 定时器，避免离开后冗余 page.update()
+        # 取消流式 delta flush 定时器 + 延迟 scroll 定时器，避免离开后冗余 page.update()/scroll_to
         # 同时清理流式追踪状态，防止 msg_end 在取消订阅期间丢失导致 _streaming_count 卡死
         self._reset_streaming_state()
         # 标记为 dirty：返回时需重新同步
