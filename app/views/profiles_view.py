@@ -28,6 +28,13 @@ class ProfilesView(ViewBase):
         self._detail_body: ft.Container = None
         self._turn_editor = None
         self._built = False
+        # 保存订阅生命周期管理（save_and_switch 用）
+        self._save_dialog: ProgressDialog = None
+        self._save_switch_folder: str = None  # 保存完成后要切换的目标剧本
+        self._save_switch_done = False
+        self._save_timeout_done = False
+        self._save_generation = 0  # 保存代际令牌：隔离旧超时线程
+        self._opened_sheet: ft.BottomSheet = None
 
     def build(self) -> ft.Control:
         self._body = ft.Container(expand=True, padding=ft.Padding.all(16))
@@ -425,11 +432,16 @@ class ProfilesView(ViewBase):
                 new_name = merged.get("name", name)
                 if new_name != name:
                     # 迁移 history 中的旧角色名引用
-                    with self.state._history_lock:
-                        for entry in self.state.history:
-                            if entry.get("name") == name:
-                                entry["name"] = new_name
-                    # 迁移磁盘存档中的旧角色名/显示名引用
+                    # 仅当当前编辑的剧本是活跃剧本时才迁移内存 history；
+                    # load_profile_for_edit 不交换 history，非活跃剧本的改名不应碰活跃剧本的 history
+                    active_folder = config.app_config.get("active_profile", "")
+                    editing_folder = self.state.profile_dir.name if self.state.profile_dir else ""
+                    if editing_folder == active_folder:
+                        with self.state._history_lock:
+                            for entry in self.state.history:
+                                if entry.get("name") == name:
+                                    entry["name"] = new_name
+                    # 迁移磁盘存档中的旧角色名/显示名引用（profile_dir 已指向编辑的剧本，安全）
                     new_display_name = merged.get("display_name", "")
                     self.state.data._migrate_character_in_chats(
                         name, new_name, dname, new_display_name)
@@ -537,10 +549,14 @@ class ProfilesView(ViewBase):
                         self._snack(f"角色名「{data['name']}」已存在，请使用其他名字")
                         return
                     # 迁移 history 中的旧角色名引用
-                    with self.state._history_lock:
-                        for entry in self.state.history:
-                            if entry.get("name") == old_name:
-                                entry["name"] = data["name"]
+                    # 仅当当前编辑的剧本是活跃剧本时才迁移内存 history
+                    active_folder = config.app_config.get("active_profile", "")
+                    editing_folder = self.state.profile_dir.name if self.state.profile_dir else ""
+                    if editing_folder == active_folder:
+                        with self.state._history_lock:
+                            for entry in self.state.history:
+                                if entry.get("name") == old_name:
+                                    entry["name"] = data["name"]
                     # 迁移磁盘存档中的旧角色名/显示名引用
                     old_display_name = c.get("display_name", "")
                     new_display_name = data.get("display_name", "")
@@ -634,57 +650,70 @@ class ProfilesView(ViewBase):
 
         def save_and_switch(e=None):
             self._close_dialog()
+            self._save_switch_folder = folder
+            self._save_switch_done = False
+            self._save_timeout_done = False
+            self._save_generation += 1  # 新保存代际
+            my_gen = self._save_generation  # 捕获本次保存的代际令牌
             # 显示保存进度对话框
-            save_dlg = ProgressDialog(self.page, title="💾 保存对话")
-            save_dlg.show(
+            self._save_dialog = ProgressDialog(self.page, title="💾 保存对话")
+            self._save_dialog.show(
                 status="正在写入对话数据…",
                 steps=["写入对话数据", "生成对话标题", "切换剧本"],
                 indeterminate=True,
             )
-            save_dlg.set_step(0, "正在写入对话数据…")
+            self._save_dialog.set_step(0, "正在写入对话数据…")
 
-            _switched = [False]
-            def _do_switch():
-                if _switched[0]:
+            # 订阅保存事件（改为实例方法，on_leave 可统一清理）
+            self.state.bus.on("saving", self._on_save_saving)
+            self.state.bus.on("saved", self._on_save_saved)
+            # 超时兜底：30s 后标记超时但不取消订阅（再给 30s 宽限期）
+            import threading
+            def _save_timeout():
+                import time as _t
+                _t.sleep(30)
+                # 代际校验：若期间用户开了新保存，本线程放弃操作
+                if my_gen != self._save_generation:
                     return
-                _switched[0] = True
-                self._do_switch_and_enter(folder)
-
-            def _on_saving(_data):
-                save_dlg.set_step(1, "正在生成对话标题…", delay=0.1)
-
-            def _on_saved(data):
-                ok = data.get("success", False) if isinstance(data, dict) else False
-                title = data.get("title", "") if isinstance(data, dict) else ""
-                # 取消订阅
-                try:
-                    self.state.bus.off("saving", _on_saving)
-                    self.state.bus.off("saved", _on_saved)
-                except Exception:
-                    pass
-                if ok:
-                    save_dlg.set_step(2, "正在切换剧本…", delay=0.1)
-                    save_dlg.complete(
-                        f"保存成功：{title}" if title else "保存成功",
-                        on_close=_do_switch,
-                        auto_close_ms=800,
-                    )
-                else:
-                    msg = data.get("message", "保存失败") if isinstance(data, dict) else "保存失败"
-                    save_dlg.fail(msg, on_close=_do_switch)
-
-            # 订阅保存事件
-            self.state.bus.on("saving", _on_saving)
-            self.state.bus.on("saved", _on_saved)
+                if self._save_switch_done:
+                    return
+                self._save_timeout_done = True
+                # 先捕获到局部变量，避免 TOCTOU 竞态
+                dlg = self._save_dialog
+                if dlg and not self._save_switch_done:
+                    # fail 带 on_close：用户 dismiss 超时对话框后置 _save_switch_done=True，
+                    # 让下方 60s 分支看到"已结束"而提前 return，避免强制切换
+                    def _on_timeout_close():
+                        self._save_dialog = None
+                        self._save_switch_done = True
+                        self._unsubscribe_save_events()
+                    dlg.fail("保存超时，请重试", on_close=_on_timeout_close)
+                _t.sleep(30)
+                # 代际再次校验（30s 宽限期内用户可能开了新保存）
+                if my_gen != self._save_generation:
+                    return
+                # 60s 后仍未完成且用户未 dismiss 超时对话框，强制清理 + 切换
+                if not self._save_switch_done:
+                    self._save_switch_done = True
+                    self._unsubscribe_save_events()
+                    if self._save_dialog:
+                        try:
+                            self._save_dialog.close()
+                        except Exception:
+                            pass
+                        self._save_dialog = None
+                    self._do_switch_and_enter(folder)
+            threading.Thread(target=_save_timeout, daemon=True).start()
             try:
                 self.state.chat.save_current_chat()
             except Exception as ex:
-                try:
-                    self.state.bus.off("saving", _on_saving)
-                    self.state.bus.off("saved", _on_saved)
-                except Exception:
-                    pass
-                save_dlg.fail("保存失败：" + str(ex)[:60], on_close=_do_switch)
+                if my_gen != self._save_generation:
+                    return  # 已被新保存取代
+                self._unsubscribe_save_events()
+                if self._save_dialog:
+                    self._save_dialog.fail("保存失败：" + str(ex)[:60],
+                        on_close=lambda: self._do_switch_and_enter(folder) if self._save_switch_folder is not None else None)
+                    self._save_dialog = None
 
         def switch_direct(e=None):
             self._close_dialog()
@@ -700,6 +729,46 @@ class ProfilesView(ViewBase):
             ],
         )
         self.page.show_dialog(dlg)
+
+    def _on_save_saving(self, _data):
+        if self._save_dialog:
+            self._save_dialog.set_step(1, "正在生成对话标题…", delay=0.1)
+
+    def _on_save_saved(self, data):
+        if self._save_switch_done:
+            return
+        ok = data.get("success", False) if isinstance(data, dict) else False
+        title = data.get("title", "") if isinstance(data, dict) else ""
+        self._save_switch_done = True
+        self._unsubscribe_save_events()
+        folder = self._save_switch_folder
+        if self._save_dialog:
+            if ok:
+                summary = f"保存成功（延迟）：{title}" if self._save_timeout_done and title else (
+                    "保存成功（延迟）" if self._save_timeout_done else
+                    (f"保存成功：{title}" if title else "保存成功")
+                )
+                self._save_dialog.set_step(2, "正在切换剧本…", delay=0.1)
+                # on_close 加守卫：若 on_leave 已置 _save_switch_folder=None（视图已离开），不执行切换
+                self._save_dialog.complete(
+                    summary,
+                    on_close=lambda: self._do_switch_and_enter(folder) if self._save_switch_folder is not None else None,
+                    auto_close_ms=800,
+                )
+            else:
+                msg = data.get("message", "保存失败") if isinstance(data, dict) else "保存失败"
+                self._save_dialog.fail(msg, on_close=lambda: self._do_switch_and_enter(folder) if self._save_switch_folder is not None else None)
+            self._save_dialog = None
+        # 若 _save_dialog 已 None（外部关闭），且 folder 仍有效，直接切换
+        elif folder is not None and self._save_switch_folder is not None:
+            self._do_switch_and_enter(folder)
+
+    def _unsubscribe_save_events(self):
+        try:
+            self.state.bus.off("saving", self._on_save_saving)
+            self.state.bus.off("saved", self._on_save_saved)
+        except Exception:
+            pass
 
     def _do_switch_and_enter(self, folder: str):
         try:
@@ -736,6 +805,9 @@ class ProfilesView(ViewBase):
             self._show_card_menu_sheet(folder)
 
     def _show_card_menu_sheet(self, folder: str):
+        # 先清理前一个可能残留的 sheet（遮罩 dismiss 路径可能未清理）
+        if self._opened_sheet is not None:
+            self._close_sheet()
         meta = gather_profile_meta(folder)
         sheet = ft.BottomSheet(
             content=ft.Container(
@@ -763,13 +835,29 @@ class ProfilesView(ViewBase):
                 ),
                 padding=ft.Padding.symmetric(horizontal=16, vertical=12),
             ),
+            # on_dismiss：用户点击遮罩区域关闭时也走清理路径，避免 overlay 孤儿泄漏
+            on_dismiss=lambda e: self._close_sheet(),
         )
         self._opened_sheet = sheet
-        self.page.show_bottom_sheet(sheet)
+        # Flet 0.86 的 BottomSheet 需通过 overlay + open=True 显示
+        try:
+            self.page.overlay.append(sheet)
+            sheet.open = True
+            self.page.update()
+        except Exception as ex:
+            print(f"[profiles] 显示底部菜单失败: {ex}")
 
     def _close_sheet(self):
         try:
-            self.page.close_bottom_sheet()
+            sheet = getattr(self, "_opened_sheet", None)
+            if sheet is not None:
+                sheet.open = False
+                try:
+                    self.page.overlay.remove(sheet)
+                except (ValueError, KeyError):
+                    pass
+                self._opened_sheet = None
+                self.page.update()
         except Exception:
             pass
 
@@ -1118,3 +1206,25 @@ class ProfilesView(ViewBase):
         if not self._built:
             return
         self._render()
+
+    def on_leave(self):
+        # 清理保存订阅，避免跨视图 saved 事件串扰
+        self._unsubscribe_save_events()
+        # 关闭挂起的保存对话框，避免跨视图悬挂
+        if self._save_dialog:
+            try:
+                self._save_dialog.close()
+            except Exception:
+                pass
+            self._save_dialog = None
+        # 关闭挂起的底部菜单 sheet
+        if self._opened_sheet is not None:
+            self._close_sheet()
+        # 关键：置 _save_switch_done=True 向旧超时线程发"已结束"信号，避免其复活强制切换；
+        # 置 _save_switch_folder=None 作为 on_close lambda 的守卫（lambda 检查 None 则不切换）；
+        # bump 代际令牌让旧超时线程识别"我已过期"而提前 return。
+        # 下次 save_and_switch 开头会把它们重置为 False / folder + bump 新代际，不影响新流程。
+        self._save_switch_folder = None
+        self._save_switch_done = True
+        self._save_timeout_done = False
+        self._save_generation += 1

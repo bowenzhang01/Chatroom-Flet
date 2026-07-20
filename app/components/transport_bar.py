@@ -30,6 +30,12 @@ class TransportBar:
         self._play_btn: ft.IconButton = None
         self._stop_btn: ft.IconButton = None
         self._save_btn: ft.IconButton = None
+        # 持有 asyncio loop 引用，供后台线程调用 page.update() 时用 call_soon_threadsafe
+        import asyncio
+        try:
+            self._async_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._async_loop = None
         self.root = self._build()
 
     def _build(self) -> ft.Control:
@@ -126,8 +132,12 @@ class TransportBar:
             self._play_btn.icon = ft.Icons.PLAY_ARROW
             self._stop_btn.disabled = True
             self._save_btn.visible = False
+        # async-safe：EventBus 事件可能在 loop 线程触发，Web 端需 call_soon_threadsafe
         try:
-            self.page.update()
+            if self._async_loop and self._async_loop.is_running():
+                self._async_loop.call_soon_threadsafe(self.page.update)
+            else:
+                self.page.update()
         except Exception:
             pass
 

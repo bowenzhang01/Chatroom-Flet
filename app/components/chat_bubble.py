@@ -87,7 +87,8 @@ def _render_bubble_text(text: str, max_width: float) -> ft.Column:
 
 def strip_streaming_tags(text: str) -> str:
     """流式中剥离末尾不完整的 [SCENE] 和 [NEXT] 标签。
-    角色对话不使用 [] 方括号，遇到 [SCENE 或 [NEXT: 即判定为标签。"""
+    角色对话不使用 [] 方括号，遇到 [SCENE 或 [NEXT: 即判定为标签。
+    同时隐藏末尾不完整的标签前缀（如 [SCE、[NEX），避免 token 边界闪烁。"""
     # 剥离完整的 [SCENE]...[/SCENE]
     text = re.sub(r'\s*\[SCENE\].*?\[/SCENE\]', '', text, flags=re.DOTALL)
     # 剥离完整的 [NEXT:Name]
@@ -96,6 +97,14 @@ def strip_streaming_tags(text: str) -> str:
     text = re.sub(r'\s*\[SCENE\](?:(?!\[/SCENE\]).)*$', '', text, flags=re.DOTALL)
     # 剥离末尾不完整的 [NEXT: 片段
     text = re.sub(r'\s*\[NEXT:[^\]]*$', '', text)
+    # 剥离末尾不完整的标签前缀（如 [SCE、[NEX、[S、[N）：
+    # 仅当 [ 后跟的大写字母是 SCENE 或 NEXT 的前缀时才隐藏，避免误伤合法的 [ 字符。
+    # 下一个 token 补全后，要么形成完整标签被上方 regex 剥离，要么不是标签而正常显示。
+    m = re.search(r'\[([A-Z]*)$', text)
+    if m and m.group(1):
+        prefix = m.group(1)
+        if "SCENE".startswith(prefix) or "NEXT".startswith(prefix):
+            text = text[:m.start()].rstrip()
     return text.strip()
 
 

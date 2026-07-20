@@ -41,6 +41,8 @@ class SettingsView(ViewBase):
         self._streaming_sw: ft.Switch = None
         self._color_theme_dd: ft.Dropdown = None
         self._about_theme_text: ft.Text = None
+        self._ssl_sw: ft.Switch = None
+        self._proxy_sw: ft.Switch = None
 
     def build(self) -> ft.Control:
         self._root = ft.Column(
@@ -138,6 +140,21 @@ class SettingsView(ViewBase):
         self._test_result = ft.Text("", size=12)
         self._test_progress = ft.ProgressRing(visible=False, width=20, height=20, stroke_width=2)
 
+        # SSL / 代理开关（解决 macOS 企业代理/WSL 代理环境 SSE 流式失败问题）
+        network_cfg = config.app_config.get("network", {})
+        self._ssl_sw = ft.Switch(
+            label="校验 SSL 证书",
+            value=config.API_VERIFY_SSL,
+            tooltip="关闭可绕过自签证书错误（有安全风险，仅调试用）",
+        )
+        self._proxy_sw = ft.Switch(
+            label="读取系统代理",
+            value=config.API_TRUST_ENV,
+            tooltip="关闭可绕过 macOS 系统代理/企业代理对 SSE 流式的干扰",
+        )
+        self._ssl_sw.on_change = lambda e: self._on_network_change()
+        self._proxy_sw.on_change = lambda e: self._on_network_change()
+
         def _test(e=None):
             self._test_result.value = ""
             self._test_progress.visible = True
@@ -191,6 +208,10 @@ class SettingsView(ViewBase):
             "建议通过环境变量 DEEPSEEK_API_KEY 设置 Key，避免明文存储在配置文件中",
             size=11, color=ft.Colors.ON_SURFACE_VARIANT, italic=True,
         )
+        network_tip = ft.Text(
+            "若 macOS/WSL 下流式输出卡顿或超时，尝试关闭\"读取系统代理\"。",
+            size=11, color=ft.Colors.ON_SURFACE_VARIANT, italic=True,
+        )
         return self._card("", [
             ft.Row([ft.Text("API 配置", size=15, weight=ft.FontWeight.W_600),
                     self._api_status_dot,
@@ -212,7 +233,28 @@ class SettingsView(ViewBase):
                 ft.FilledButton("保存", icon=ft.Icons.SAVE, on_click=_save),
             ], spacing=8),
             env_tip,
+            ft.Divider(height=1),
+            ft.Text("网络", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+            self._ssl_sw,
+            self._proxy_sw,
+            network_tip,
         ])
+
+    def _on_network_change(self):
+        """SSL/代理开关切换：立即生效 + 持久化。"""
+        config.API_VERIFY_SSL = bool(self._ssl_sw.value)
+        config.API_TRUST_ENV = bool(self._proxy_sw.value)
+        config.app_config.setdefault("network", {})
+        config.app_config["network"]["verify_ssl"] = config.API_VERIFY_SSL
+        config.app_config["network"]["trust_env"] = config.API_TRUST_ENV
+        try:
+            self.state.data._save_config()
+        except Exception:
+            pass
+        self._snack(
+            f"SSL 校验：{'开' if config.API_VERIFY_SSL else '关'} · "
+            f"系统代理：{'开' if config.API_TRUST_ENV else '关'}（下次请求生效）"
+        )
 
     def _fetch_models(self, base, key):
         self._model_dd.options = []
@@ -397,15 +439,25 @@ class SettingsView(ViewBase):
     def on_enter(self):
         if not self._built:
             return
+        # 用 load_profile_for_edit 而非 load_profile：后者会无条件重置 current_scene/scene_idx 等
+        # 对话运行时状态，导致用户从剧本页回到设置页再回聊天页时场景上下文丢失。
+        # load_profile_for_edit 保存并恢复这些运行时状态。
         active = config.app_config.get("active_profile", "")
         if active and self.state.profile_dir:
             current_folder = self.state.profile_dir.name
             if current_folder != active:
-                self.state.data.load_profile(active)
+                try:
+                    self.state.load_profile_for_edit(active)
+                except Exception as ex:
+                    print(f"[settings] on_enter load_profile_for_edit 失败: {ex}")
         self._sync_api_fields()
         self._render_behavior()
         if self._color_theme_dd:
             self._color_theme_dd.value = self.ui.color_theme_key
+            try:
+                self._color_theme_dd.update()
+            except Exception:
+                pass
 
     def on_leave(self):
         if not self._built:
@@ -449,6 +501,10 @@ class SettingsView(ViewBase):
             self._temp_slider.value = float(config.TEMPERATURE)
         if self._tokens_slider:
             self._tokens_slider.value = float(config.MAX_TOKENS)
+        if self._ssl_sw:
+            self._ssl_sw.value = config.API_VERIFY_SSL
+        if self._proxy_sw:
+            self._proxy_sw.value = config.API_TRUST_ENV
 
     def _apply_api_settings(self):
         if config.key_source() != "env":

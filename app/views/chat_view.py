@@ -53,6 +53,9 @@ class ChatView(ViewBase):
         self._streaming_rows: dict = {}  # msg_id → ft.Row 映射
         self._streaming_count = 0  # 活跃的流式气泡数，_on_scroll 据此抑制按钮闪烁
         self._bottom_btn_visible = False  # 按钮是否已插入 Column
+        self._user_scrolled = False  # 用户主动滚动（上滚）后置 True；msg_delta 据此不强制跟随
+        self._delta_update_timer = None  # delta update 节流定时器（Safari WebSocket 友好）
+        self._program_scroll = False  # 程序触发滚动时置 True，避免 _on_scroll 误判为用户上滚
 
     # ═══ 构建视图 ═══
     def build(self) -> ft.Control:
@@ -243,9 +246,22 @@ class ChatView(ViewBase):
         try:
             pixels = float(getattr(e, "pixels", 0) or 0)
             max_ext = float(getattr(e, "max_scroll_extent", 0) or 0)
-            self._near_bottom = (max_ext - pixels) < 120
-            self._list_view.auto_scroll = self._near_bottom
-            if self._streaming_count == 0:
+            near_bottom = (max_ext - pixels) < 120
+            # 检测用户主动滚动：非底部 + 非程序滚动即视为用户上滚
+            # 不依赖 True→False 跳变（跳变会被程序滚动窗口消耗后无法再次置位）
+            # 用 _user_scrolled 标志作为更可靠的"用户意图"信号，避免 Web 端 WebSocket 延迟导致 _near_bottom 过时
+            if not near_bottom and not self._program_scroll:
+                self._user_scrolled = True
+            self._near_bottom = near_bottom
+            # 用户回到底部时清除主动滚动标志
+            if near_bottom:
+                self._user_scrolled = False
+            # auto_scroll + 按钮同步：程序滚动期间跳过，避免动画中途按钮闪烁
+            if not self._program_scroll:
+                if self._list_view.auto_scroll != near_bottom:
+                    self._list_view.auto_scroll = near_bottom
+                # 流式期间也同步按钮：_user_scrolled 标志已防止 delta 自动滚动导致的误判，
+                # _sync_bottom_btn 有幂等检查（show == _bottom_btn_visible）防闪烁
                 self._sync_bottom_btn(not self._near_bottom)
         except Exception:
             pass
@@ -349,6 +365,7 @@ class ChatView(ViewBase):
     def _reset_to_empty(self):
         self._list_view.controls.clear()
         self._has_msgs = False
+        self._reset_streaming_state()
         self._empty_state.visible = True
         self._rebuild_empty_state()
         self._update_status("就绪", False, False)
@@ -358,6 +375,21 @@ class ChatView(ViewBase):
             self.page.update()
         except Exception:
             pass
+
+    def _reset_streaming_state(self):
+        """清理流式追踪状态。
+        stop/导航离开后 msg_end 可能因取消订阅而丢失，导致 _streaming_count 卡死、
+        _streaming_rows 残留 stale row。本方法在所有重置/重载入口调用，确保按钮逻辑不被卡死。
+        """
+        self._streaming_rows.clear()
+        self._streaming_count = 0
+        self._user_scrolled = False
+        if self._delta_update_timer is not None:
+            self._delta_update_timer.cancel()
+            self._delta_update_timer = None
+        # 重置按钮可见性状态，强制 _sync_bottom_btn 重新评估
+        self._bottom_btn_visible = True  # 强制下次 _sync_bottom_btn(True) 触发插入
+        self._sync_bottom_btn(False)
 
     # ═══ 场景/剧本 ═══
     def _scene_label(self) -> str:
@@ -445,6 +477,11 @@ class ChatView(ViewBase):
             self.state.loop.pause()
         elif action == "resume":
             self.state.loop.resume()
+            # 用户回合时 resume() 不会 emit "resumed"（loop 检测到 _waiting_for_user + You 在顺序中），
+            # transport_bar 按钮状态不变，用户无感知。加 snack 明确提示。
+            if (self.state.loop._waiting_for_user
+                    and "You" in self.state.loop.app._get_effective_order()):
+                self._snack("请先输入发言或跳过")
         elif action == "stop":
             self._confirm_stop()
         elif action == "save":
@@ -559,13 +596,23 @@ class ChatView(ViewBase):
 
     def _scroll_to_bottom(self):
         try:
+            self._program_scroll = True
             self._near_bottom = True
+            self._user_scrolled = False
             self._list_view.auto_scroll = True
             self._sync_bottom_btn(False)
             self._list_view.scroll_to(offset=1_000_000, duration=200)
             self._push_update()
+            # 延迟清除 _program_scroll（滚动动画 200ms 期间避免误判）
+            import threading
+            t = threading.Timer(0.4, self._clear_program_scroll)
+            t.daemon = True
+            t.start()
         except Exception:
-            pass
+            self._program_scroll = False
+
+    def _clear_program_scroll(self):
+        self._program_scroll = False
 
     # ═══ EventBus 订阅 ═══
     def _subscribe(self):
@@ -618,7 +665,8 @@ class ChatView(ViewBase):
         mid = entry.get("msg_id", "")
         if mid:
             self._streaming_rows[mid] = row
-        self._streaming_count += 1
+            self._streaming_count += 1
+        # msg_id 为空时不计入 _streaming_count，避免 _on_msg_end 因 row is None 提前 return 而漏减
 
     def _on_msg_delta(self, entry):
         """流式增量：更新已有气泡的文本内容（无动画）。"""
@@ -626,39 +674,63 @@ class ChatView(ViewBase):
         row = self._streaming_rows.get(mid)
         if row is None:
             return
-        was_near = self._near_bottom
         text = entry.get("text", "")
         max_w = self._bubble_max_width()
         new_content = render_streaming_text(text, max_w)
         self._replace_bubble_content(row, new_content)
-        if was_near:
-            self._near_bottom = True
+        # 仅当用户未主动上滚时才跟随到底部（修复 macOS Web Safari 滚动劫持）
+        # 此前 was_near 读取的 _near_bottom 在 Web 端因 WebSocket 延迟可能过时，
+        # 用 _user_scrolled 标志作为更可靠的"用户意图"信号。
+        if not self._user_scrolled and self._near_bottom:
             self._list_view.auto_scroll = True
             self._sync_bottom_btn(False)
-        try:
-            self._push_update()
-        except Exception:
-            pass
+        # update 节流：合并 100ms 内的多次 delta update，减少 Safari WebSocket 压力
+        self._schedule_delta_update()
+
+    def _schedule_delta_update(self):
+        """合并 100ms 内的多次 delta update 为一次 page.update()，减少 Web 端 WebSocket 压力。"""
+        if self._delta_update_timer is not None:
+            return  # 已有待触发 update
+        import threading
+        def _flush():
+            self._delta_update_timer = None
+            try:
+                self._push_update()
+            except Exception:
+                pass
+        t = threading.Timer(0.1, _flush)
+        t.daemon = True
+        self._delta_update_timer = t
+        t.start()
 
     def _on_msg_end(self, entry):
         """流式结束：最终渲染（完整 action 解析），移除追踪。"""
         mid = entry.get("msg_id", "")
         row = self._streaming_rows.pop(mid, None)
         if row is None:
+            # row is None：此 msg_id 未被 _on_streaming_start 追踪（可能是空 msg_id 跳过追踪，
+            # 或 msg_end 重复 emit，或导航离开后残留事件）。不递减 _streaming_count 以防错减别人的计数。
+            # 仍走 _finalize_msg_end 取消挂起定时器（若有）。
+            self._finalize_msg_end(entry)
             return
         self._streaming_count = max(0, self._streaming_count - 1)
-        was_near = self._near_bottom
         text = entry.get("text", "")
         max_w = self._bubble_max_width()
         new_content = _md(text, max_w)
         self._replace_bubble_content(row, new_content)
-        if was_near:
-            self._near_bottom = True
+        if not self._user_scrolled and self._near_bottom:
             self._list_view.auto_scroll = True
             self._sync_bottom_btn(False)
         else:
             if self._streaming_count == 0:
                 self._sync_bottom_btn(not self._near_bottom)
+        self._finalize_msg_end(entry)
+
+    def _finalize_msg_end(self, entry):
+        """msg_end 共用收尾：取消挂起的 delta update 定时器，立即 push 最终内容。"""
+        if self._delta_update_timer is not None:
+            self._delta_update_timer.cancel()
+            self._delta_update_timer = None
         try:
             self._push_update()
         except Exception:
@@ -817,6 +889,9 @@ class ChatView(ViewBase):
     def _reload_history_into_list(self):
         """把 state.history 重灌进气泡列表。"""
         self._list_view.controls.clear()
+        # 清理流式追踪状态：on_enter 重载时若有未完成的流式消息（msg_end 在取消订阅期间丢失），
+        # _streaming_rows 会残留 stale row 且 _streaming_count 卡死，导致回到底部按钮永久失效
+        self._reset_streaming_state()
         for entry in self.state.history_snapshot():
             row = make_bubble_row(entry, self.state, self._bubble_max_width())
             row.opacity = 1
@@ -885,6 +960,9 @@ class ChatView(ViewBase):
             self.state.loop.pause()
         # 取消场景横幅定时器，避免离开后幽灵淡出
         self._scene_banner.cancel()
+        # 取消流式 delta update 定时器，避免离开后冗余 page.update()
+        # 同时清理流式追踪状态，防止 msg_end 在取消订阅期间丢失导致 _streaming_count 卡死
+        self._reset_streaming_state()
         # 标记为 dirty：返回时需重新同步
         self._dirty = True
         self._unsubscribe()

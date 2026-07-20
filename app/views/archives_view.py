@@ -31,6 +31,10 @@ class ArchivesView(ViewBase):
         self._built = False
         self._save_dialog: ProgressDialog = None
         self._selected_folder: str = None  # None=剧本列表, folder=存档列表
+        self._saving = False  # 保存防抖标记
+        self._save_completed = False  # 保存是否已成功（防超时线程误覆盖）
+        self._save_timed_out = False
+        self._save_generation = 0  # 保存代际令牌：隔离旧超时线程，避免干扰新保存
 
     def build(self) -> ft.Control:
         self._header_container = ft.Container(
@@ -362,9 +366,17 @@ class ArchivesView(ViewBase):
 
     # ═══ 动作 ═══
     def _save_current(self):
+        # 防抖：保存进行中时忽略后续点击
+        if self._saving:
+            return
         if not self.state.history:
             self._snack("没有对话内容可保存")
             return
+        self._saving = True
+        self._save_completed = False
+        self._save_timed_out = False
+        self._save_generation += 1  # 新保存代际
+        my_gen = self._save_generation  # 捕获本次保存的代际令牌
         # 显示保存进度对话框
         self._save_dialog = ProgressDialog(self.page, title="💾 保存对话")
         self._save_dialog.show(
@@ -376,25 +388,35 @@ class ArchivesView(ViewBase):
         # 订阅保存事件
         self.state.bus.on("saving", self._on_saving)
         self.state.bus.on("saved", self._on_saved)
-        self._save_timed_out = False
-        # 超时兜底：30s 后标记超时，再等 30s 后才取消订阅
+        # 超时兜底：30s 后标记超时，但不覆盖已成功的对话框
         def _save_timeout():
             import time as _t
             _t.sleep(30)
+            # 代际校验：若期间用户离开又回来开了新保存，my_gen != 当前代际，本线程放弃操作
+            if my_gen != self._save_generation:
+                return
+            if self._save_completed:
+                return
             self._save_timed_out = True
-            if self._save_dialog:
+            if self._save_dialog and not self._save_completed:
                 self._save_dialog.fail("保存超时，请重试")
-            # 宽限期：再给 30s 等待 AI 标题生成完成
             _t.sleep(30)
-            self._unsubscribe_save_events()
+            if my_gen != self._save_generation:
+                return
+            if not self._save_completed:
+                self._saving = False
+                self._unsubscribe_save_events()
         import threading
         threading.Thread(target=_save_timeout, daemon=True).start()
         try:
             self.state.chat.save_current_chat()
         except Exception as ex:
+            if my_gen != self._save_generation:
+                return  # 已被新保存取代
             if self._save_dialog:
                 self._save_dialog.fail("保存失败：" + str(ex)[:60])
             self._save_dialog = None
+            self._saving = False
             self._unsubscribe_save_events()
 
     def _on_saving(self, _data):
@@ -402,9 +424,17 @@ class ArchivesView(ViewBase):
             self._save_dialog.set_step(1, "正在生成对话标题…", delay=0.1)
 
     def _on_saved(self, data: dict):
+        # 代际校验：若期间用户开了新保存，旧 saved 事件放弃操作（避免覆盖新对话框）
+        # 注意：_on_saved 是实例方法，每次保存都订阅同一个方法，无法区分代际；
+        # 但新保存会先 unsubscribe 再 subscribe，旧 saved 事件若在新保存之后到达，
+        # 会被新保存的 _on_saved 接收——此时用 _save_completed 判断是否已处理过。
+        if self._save_completed:
+            return  # 本代际已处理过 saved
         ok = data.get("success", False) if isinstance(data, dict) else False
         msg = data.get("message", "保存成功" if ok else "保存失败") if isinstance(data, dict) else "保存完成"
         title = data.get("title", "") if isinstance(data, dict) else ""
+        self._save_completed = True
+        self._saving = False
         if self._save_dialog:
             if ok:
                 summary = f"保存成功（延迟）：{title}" if self._save_timed_out and title else (
@@ -577,6 +607,19 @@ class ArchivesView(ViewBase):
 
     def on_leave(self):
         self._unsubscribe_save_events()
+        # 关闭挂起的保存对话框，避免跨视图悬挂 + 超时误弹
+        if self._save_dialog:
+            try:
+                self._save_dialog.close()
+            except Exception:
+                pass
+            self._save_dialog = None
+        # 关键：置 _save_completed=True 向旧超时线程发"已结束"信号，避免其复活干扰新保存；
+        # bump 代际令牌让旧超时线程识别"我已过期"而提前 return。
+        # 下次 _save_current 开头会重置为 False + bump 新代际，不影响新流程。
+        self._saving = False
+        self._save_completed = True
+        self._save_generation += 1
 
     def _safe_render(self):
         if self.page:

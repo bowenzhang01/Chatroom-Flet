@@ -29,12 +29,15 @@ FONT_SC_PATH = ASSETS_DIR / "NotoSansSC-Regular.ttf"
 FONT_SC_NAME = "Noto Sans SC"  # Flet 内部引用名
 
 # ═══ 全局 JSON 配置（跨剧本共享的 API / App 设置）═══
+# 注意：import 时不向 bundle 目录写入（Android/iOS 打包后 bundle 只读）。
+# config.json 的复制/初始化由 path_resolver.setup_workspace() 负责，
+# 在打包模式下复制到可写数据目录后再读取。
 _config_path = BASE_DIR / "config.json"
-if not _config_path.exists():
-    _example_path = BASE_DIR / "config.example.json"
-    if _example_path.exists():
-        shutil.copy2(_example_path, _config_path)
-app_config = load_json(_config_path, default={})
+if _config_path.exists():
+    app_config = load_json(_config_path, default={})
+else:
+    # bundle 内无 config.json（打包模式首次启动）：先空载，setup_workspace 会重新加载
+    app_config = {}
 
 
 def resolve_key():
@@ -69,8 +72,11 @@ MAX_TOKENS = MC.get("max_tokens", 300)
 ACTIVE_PROFILE = app_config.get("active_profile", "dorm_life")
 
 # ═══ SSL / 代理配置 ═══
-API_VERIFY_SSL = True   # HTTPS 证书校验；自签证书环境需关闭
-API_TRUST_ENV = True    # 读取系统代理环境变量；WSL 代理冲突时可关闭
+# 可在运行时通过设置页修改，修改后立即影响所有新建的 httpx.Client。
+# 默认 True（安全）；macOS 企业代理/WSL 代理环境可在设置页关闭。
+_network = app_config.get("network", {}) if isinstance(app_config, dict) else {}
+API_VERIFY_SSL = _network.get("verify_ssl", True)   # HTTPS 证书校验；自签证书环境需关闭
+API_TRUST_ENV = _network.get("trust_env", True)     # 读取系统代理环境变量；WSL/macOS 代理冲突时可关闭
 
 # ═══ 随机事件默认参数（用户不可调，仅作为内置常量）═══
 RANDOM_EVENT_DEFAULTS = {

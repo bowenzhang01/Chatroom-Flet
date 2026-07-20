@@ -26,6 +26,12 @@ class DirectorInput:
         self._skip_btn: ft.TextButton = None
         self._hint: ft.Text = None
         self._feedback_timer: threading.Timer = None
+        # 持有 asyncio loop 引用（在主线程构造时捕获），供后台线程调度 coroutine
+        import asyncio
+        try:
+            self._async_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._async_loop = None
         self.root = self._build()
 
     def _build(self) -> ft.Control:
@@ -162,8 +168,18 @@ class DirectorInput:
     def _try_focus(self):
         try:
             result = self._field.focus()
-            if result is not None and hasattr(result, "close"):
-                result.close()
+            # Flet 在 Web 模式（有运行中的 asyncio loop）下 focus() 返回 coroutine；
+            # 调 close() 会丢弃协程导致焦点不生效。
+            # 正确处理：若是 coroutine，用 run_coroutine_threadsafe 跨线程安全调度到主 loop。
+            # EventBus 事件由对话 loop 后台线程 emit，_try_focus 实际在后台线程执行，
+            # 故必须在 __init__ 时捕获 _async_loop（主线程），此处用 call_soon_threadsafe 调度。
+            if result is not None and self._async_loop is not None:
+                try:
+                    import asyncio
+                    if asyncio.iscoroutine(result):
+                        asyncio.run_coroutine_threadsafe(result, self._async_loop)
+                except RuntimeError:
+                    pass
         except Exception:
             pass
 

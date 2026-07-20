@@ -174,6 +174,10 @@ def call_chat_completion_async(
     threading.Thread(target=_run, daemon=True).start()
 
 
+class StreamInterrupted(Exception):
+    """流式输出被外部中断（如 stop() 调用）。内部信号，不向调用方抛出。"""
+
+
 def call_chat_completion_stream(
     messages: list,
     on_token: Callable[[str], None],
@@ -183,8 +187,16 @@ def call_chat_completion_stream(
     temperature: float = None,
     max_tokens: int = None,
     timeout: float = 60.0,
+    stop_check: Callable[[], bool] = None,
 ) -> str:
     """流式调用 LLM chat completion，逐 token 回调。
+
+    Args:
+        stop_check: 可选的中断检查回调；返回 True 时立即中断流式读取。
+            用于 stop() 调用后从外部打断阻塞在 iter_lines() 的 loop 线程。
+            检查频率：每个 SSE 事件行 + 每个 token。
+        timeout: 当为 float 时作为 read timeout；推理模型首 token 可能 60-120s，
+            建议传 httpx.Timeout 对象分离 connect/read 超时。
 
     Returns: 累积完整的响应文本
     Raises: APIError
@@ -204,8 +216,13 @@ def call_chat_completion_stream(
     if not api_key:
         raise APIError("未配置 API Key")
 
+    # 流式：read timeout 给 120s（推理模型首 token 可能 60-120s）；connect 10s
+    if isinstance(timeout, (int, float)):
+        timeout = httpx.Timeout(connect=10.0, read=float(timeout) * 2, write=10.0, pool=10.0)
+
     url = f"{api_base}/chat/completions"
-    print(f"[api] SSE POST {url} | model={model} | timeout={timeout}s")
+    timeout_log = timeout.read if isinstance(timeout, httpx.Timeout) else timeout
+    print(f"[api] SSE POST {url} | model={model} | read_timeout={timeout_log}s")
     full_text = []
 
     try:
@@ -229,9 +246,13 @@ def call_chat_completion_stream(
             ) as response:
                 response.raise_for_status()
                 for line in response.iter_lines():
-                    if not line or not line.startswith("data: "):
+                    if stop_check and stop_check():
+                        raise StreamInterrupted()
+                    if not line or not line.startswith("data:"):
                         continue
-                    data_str = line[6:]
+                    data_str = line[5:]
+                    if data_str.startswith(" "):
+                        data_str = data_str[1:]
                     if data_str.strip() == "[DONE]":
                         break
                     try:
@@ -239,10 +260,16 @@ def call_chat_completion_stream(
                         delta = data.get("choices", [{}])[0].get("delta", {})
                         token = delta.get("content", "")
                         if token:
+                            if stop_check and stop_check():
+                                raise StreamInterrupted()
                             full_text.append(token)
                             on_token(token)
                     except (json.JSONDecodeError, KeyError, IndexError):
                         continue
+    except StreamInterrupted:
+        print("[api] SSE stream interrupted by stop_check")
+        result = "".join(full_text).strip()
+        return result
     except httpx.HTTPStatusError as e:
         raise APIError(_parse_error(e), e.response.status_code)
     except Exception as e:
@@ -263,6 +290,7 @@ def call_chat_completion_stream_async(
     temperature: float = None,
     max_tokens: int = None,
     timeout: float = 60.0,
+    stop_check: Callable[[], bool] = None,
 ):
     """后台线程流式调用 LLM。每 token 回调 on_token，完成时回调 on_result。"""
     def _run():
@@ -276,6 +304,7 @@ def call_chat_completion_stream_async(
                 temperature=temperature,
                 max_tokens=max_tokens,
                 timeout=timeout,
+                stop_check=stop_check,
             )
             if on_result:
                 on_result(result)

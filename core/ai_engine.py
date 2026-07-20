@@ -35,6 +35,10 @@ class AIEngine:
         self.app = app
         self._api_error_count = 0  # 连续失败计数
 
+    def _stop_check(self) -> bool:
+        """供流式 API 检查是否应中断（loop stop 事件触发后立即返回 True）。"""
+        return self.app.loop._stop_event.is_set()
+
     # ═══ 场景与 Prompt 构建 ═══
 
     def _get_scene_text(self) -> str:
@@ -161,6 +165,7 @@ class AIEngine:
                     {"role": "user", "content": prompt},
                 ],
                 on_token=on_token,
+                stop_check=self._stop_check,
             )
             self._api_error_count = 0
             return (content, None)
@@ -470,6 +475,7 @@ class AIEngine:
                     {"role": "user", "content": prompt},
                 ],
                 on_token=on_token,
+                stop_check=self._stop_check,
             )
             print(f"[random_npc] '{npc_name}' streaming response: {content[:80]}...")
             return content
@@ -494,6 +500,7 @@ class AIEngine:
                     {"role": "user", "content": prompt},
                 ],
                 on_token=on_token,
+                stop_check=self._stop_check,
             )
             print(f"[random_npc] '{npc_name}' streaming intro: {content[:80]}...")
             return content

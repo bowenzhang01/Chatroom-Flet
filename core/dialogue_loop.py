@@ -71,12 +71,22 @@ class DialogueLoop:
         """启动对话。若 scene_idx == -1（按时间生成），由 UI 层先调
         ai.generate_time_scene_sync() 并确认后再调此方法。"""
         from core.debug import invariant, validate_runtime_state
-        invariant(not self.running, "start() 调用时 loop 已在运行中")
-        if self._thread is not None:
+        # 允许在孤儿线程存活时调用（下方会等其退出），仅检查不应已有正常运行的线程
+        if self._thread is not None and self._thread.is_alive():
+            # 孤儿线程检测：stop() join 超时后线程可能仍活着（阻塞在网络 I/O）
+            # 现已通过 stop_check 让流式 API 可被中断，但若孤儿线程仍存活，
+            # 强制等其退出后再启动新线程，避免双 loop 并发。
+            print("[loop] start: previous thread still alive, waiting for it to exit...")
+            self._stop_event.set()
+            self._thread.join(timeout=10.0)
             if self._thread.is_alive():
-                print("[loop] start: thread already alive, ignoring")
+                print("[loop] start: orphan thread did not exit within 10s, aborting start")
+                self.bus.emit("api_error_stop", "上轮对话未完全停止，请稍后重试")
                 return
             self._thread = None
+        else:
+            if self._thread is not None:
+                self._thread = None
         # 检查 API Key
         import config
         if not config.API_KEY:
@@ -509,27 +519,35 @@ class DialogueLoop:
         response = ""
         try:
             response = generate_fn(on_token)
-        except Exception:
-            pass
+        except Exception as ex:
+            print(f"[loop] _stream_npc_dialogue generate_fn error: {ex}")
 
-        if self._stop_event.is_set():
+        try:
+            if self._stop_event.is_set():
+                entry["streaming"] = False
+                self.bus.emit("msg_end", dict(entry))
+                # farewell 清理由 finally 统一处理
+                return response
+
+            if post_process:
+                response = post_process(response)
+
+            entry["text"] = (response or "").strip()
             entry["streaming"] = False
             self.bus.emit("msg_end", dict(entry))
+        except Exception as ex:
+            # post_process 抛异常或其他错误：仍保证 msg_end 触发，避免气泡永久停留流式态
+            print(f"[loop] _stream_npc_dialogue post-process error: {ex}")
+            entry["streaming"] = False
+            if not entry.get("text"):
+                entry["text"] = (response or "").strip()
+            self.bus.emit("msg_end", dict(entry))
+        finally:
+            # farewell 清理必须执行：无论正常/异常/stop 路径，is_farewell 都要清空 _active_npc
+            # 否则 NPC 状态机卡死，_should_trigger_random 持续返回 False 抑制随机事件
             if is_farewell:
                 self.app._active_npc = None
                 self.app._char_turns_since_event = 0
-            return response
-
-        if post_process:
-            response = post_process(response)
-
-        entry["text"] = response.strip()
-        entry["streaming"] = False
-        self.bus.emit("msg_end", dict(entry))
-
-        if is_farewell:
-            self.app._active_npc = None
-            self.app._char_turns_since_event = 0
 
         return response
 
