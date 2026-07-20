@@ -80,12 +80,13 @@ class ArchivesView(ViewBase):
                     ),
                     ft.Column(
                         controls=[
-                            ft.Text("对话存档", size=20, weight=ft.FontWeight.W_700),
-                            ft.Text(title, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                            ft.Text("对话存档", size=20, weight=ft.FontWeight.W_700,
+                                    max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+                            ft.Text(title, size=12, color=ft.Colors.ON_SURFACE_VARIANT,
+                                    max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                         ],
-                        spacing=0, tight=True,
+                        spacing=0, tight=True, expand=True,
                     ),
-                    ft.Container(expand=True),
                 ],
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 spacing=8,
@@ -95,13 +96,14 @@ class ArchivesView(ViewBase):
                 controls=[
                     ft.Column(
                         controls=[
-                            ft.Text("对话存档", size=20, weight=ft.FontWeight.W_700),
+                            ft.Text("对话存档", size=20, weight=ft.FontWeight.W_700,
+                                    max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                             ft.Text("选择剧本查看存档", size=12,
-                                    color=ft.Colors.ON_SURFACE_VARIANT),
+                                    color=ft.Colors.ON_SURFACE_VARIANT,
+                                    max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                         ],
-                        spacing=0, tight=True,
+                        spacing=0, tight=True, expand=True,
                     ),
-                    ft.Container(expand=True),
                     ft.FilledTonalButton(
                         content=ft.Text("保存当前"), icon=ft.Icons.SAVE,
                         on_click=lambda e: self._save_current(),
@@ -146,11 +148,11 @@ class ArchivesView(ViewBase):
                                     f"{meta['chat_count']} 个存档"
                                     + (" · 当前剧本" if is_active else ""),
                                     size=12, color=ft.Colors.ON_SURFACE_VARIANT,
+                                    max_lines=1, overflow=ft.TextOverflow.ELLIPSIS,
                                 ),
                             ],
                             spacing=2, tight=True, expand=True,
                         ),
-                        ft.Container(expand=True),
                         ft.Icon(ft.Icons.CHEVRON_RIGHT, size=20,
                                 color=ft.Colors.ON_SURFACE_VARIANT),
                     ],

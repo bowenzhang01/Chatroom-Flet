@@ -75,7 +75,6 @@ class TransportBar:
         )
 
         controls = [self._mode_dd] + self._extra_controls + [
-            ft.Container(expand=True),
             self._play_btn,
             self._stop_btn,
             self._save_btn,

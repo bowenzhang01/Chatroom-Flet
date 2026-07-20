@@ -33,7 +33,7 @@ class ModeChips:
         row = ft.Row(
             controls=[self._make_chip(label, attr, key, icon) for label, attr, key, icon in _MODES],
             spacing=8,
-            scroll=ft.ScrollMode.AUTO,
+            scroll=ft.ScrollMode.HIDDEN,
         )
         return ft.Container(
             content=row,

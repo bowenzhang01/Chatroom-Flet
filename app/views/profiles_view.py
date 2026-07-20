@@ -130,8 +130,8 @@ class ProfilesView(ViewBase):
                         controls=[
                             ft.TextButton(content=ft.Text("← 返回"),
                                           on_click=lambda e: self._back_to_list()),
-                            ft.Text(meta["title"], size=20, weight=ft.FontWeight.W_700),
-                            ft.Container(expand=True),
+                            ft.Text(meta["title"], size=20, weight=ft.FontWeight.W_700,
+                                    max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
                             ft.FilledButton(content=ft.Text("进入对话"), icon=ft.Icons.PLAY_ARROW,
                                             on_click=lambda e: self._enter_chat(folder)),
                         ],
@@ -242,7 +242,8 @@ class ProfilesView(ViewBase):
                         ft.Column(
                             controls=[
                                 ft.Text(f"{sc.get('time','')} · {sc.get('location','')}", size=13,
-                                        weight=ft.FontWeight.W_500),
+                                        weight=ft.FontWeight.W_500, max_lines=1,
+                                        overflow=ft.TextOverflow.ELLIPSIS),
                                 ft.Text(sc.get("scene", ""), size=11, color=ft.Colors.ON_SURFACE_VARIANT,
                                         max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                             ],

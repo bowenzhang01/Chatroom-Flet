@@ -121,7 +121,8 @@ class TurnOrderEditor:
                 controls=[
                     ft.Icon(ft.Icons.DRAG_HANDLE, size=18, color=ft.Colors.ON_SURFACE_VARIANT),
                     dot,
-                    ft.Text(dname, size=13, weight=ft.FontWeight.W_500, expand=True),
+                    ft.Text(dname, size=13, weight=ft.FontWeight.W_500, expand=True,
+                            max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                     trailing,
                 ],
                 spacing=8,

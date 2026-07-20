@@ -70,8 +70,10 @@ class ChatView(ViewBase):
             width=8, height=8, border_radius=4,
             bgcolor=ft.Colors.OUTLINE,
         )
-        self._status_text = ft.Text("就绪", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
-        self._count_text = ft.Text("0 条", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
+        self._status_text = ft.Text("就绪", size=12, color=ft.Colors.ON_SURFACE_VARIANT,
+                                    max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True)
+        self._count_text = ft.Text("0 条", size=12, color=ft.Colors.ON_SURFACE_VARIANT,
+                                   max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
 
         self._transport = TransportBar(
             self.page, self.state, on_action=self._on_transport_action,
@@ -143,6 +145,7 @@ class ChatView(ViewBase):
         self._title_text = ft.Text(
             self.state.title, size=18, weight=ft.FontWeight.W_700, max_lines=1,
             overflow=ft.TextOverflow.ELLIPSIS,
+            expand=True,
         )
         self._scene_text = ft.Text(
             self._scene_label(), size=13, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=1,
@@ -160,7 +163,7 @@ class ChatView(ViewBase):
             on_open=self._refresh_header_menu,
         )
         scene_btn = ft.Container(
-            content=ft.Row([self._scene_text], spacing=4),
+            content=ft.Row([self._scene_text], spacing=4, tight=True),
             padding=ft.Padding.symmetric(horizontal=8, vertical=4),
             border_radius=RADIUS_PILL,
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
@@ -183,9 +186,8 @@ class ChatView(ViewBase):
         return ft.Container(
             content=ft.Row(
                 controls=[
-                    title_btn,
+                    ft.Container(content=title_btn, expand=True),
                     scene_btn,
-                    ft.Container(expand=True),
                     theme_btn,
                     settings_btn,
                 ],
@@ -304,7 +306,9 @@ class ChatView(ViewBase):
     def _build_empty_state(self) -> ft.Control:
         folder = config.app_config.get("active_profile", "")
         emoji = profile_emoji(folder, self.state.title)
-        title = ft.Text(self.state.title, size=22, weight=ft.FontWeight.W_700, text_align=ft.TextAlign.CENTER)
+        title = ft.Text(self.state.title, size=22, weight=ft.FontWeight.W_700,
+                        text_align=ft.TextAlign.CENTER, max_lines=2,
+                        overflow=ft.TextOverflow.ELLIPSIS)
         subtitle = ft.Text("对话尚未开始", size=13, color=ft.Colors.ON_SURFACE_VARIANT)
         avatars = self._build_character_avatars()
         start_btn = ft.FilledButton(
