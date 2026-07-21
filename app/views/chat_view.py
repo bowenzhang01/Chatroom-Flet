@@ -71,7 +71,7 @@ class ChatView(ViewBase):
             bgcolor=ft.Colors.OUTLINE,
         )
         self._status_text = ft.Text("就绪", size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT,
-                                    max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True)
+                                    max_lines=2, overflow=ft.TextOverflow.ELLIPSIS, expand=True)
         self._count_text = ft.Text("0 条", size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT,
                                    max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
 

@@ -16,6 +16,8 @@ ChatRoom - Flet Edition · 光谱主题 (Spectrum Themes)
 
 import flet as ft
 
+import config
+
 __all__ = [
     "build_theme",
     "rebuild_themes",
@@ -40,6 +42,9 @@ __all__ = [
     "TEXT_MD",
     "TEXT_SM",
     "TEXT_XS",
+    "FONT_SCALE_MAP",
+    "FONT_SCALE_LABELS",
+    "get_font_scale_key",
 ]
 
 # ═══ 文字尺寸常量 ═══
@@ -49,26 +54,60 @@ __all__ = [
 # 1.3× 系统缩放下：实际尺寸 ≈ 原始设计值，布局不会被撑破。
 #
 # 映射关系（设计值 → 常量）：
-#   56 → TEXT_EMOJI (44)   大 emoji（空状态封面）
-#   22 → TEXT_XXL  (18)    超大标题（空状态标题）
-#   20 → TEXT_XL   (16)    页面标题（存档/剧本库/设置）
-#   18 → TEXT_LG   (14)    对话标题（chat header）
-#   16 → TEXT_ML   (13)    avatar 文字、角色卡名
-#   15 → TEXT_ML   (13)    卡片标题、分区标题
-#   14 → TEXT_MD   (11)    正文（角色名、气泡、卡片标题）
-#   13 → TEXT_SM   (10)    辅助文字（场景、状态、segment）
-#   12 → TEXT_SM   (10)    辅助文字（标签、元信息）
-#   11 → TEXT_XS   (9)     极小（时间戳、提示、描述）
-#   10 → TEXT_XS   (9)     极小（徽章、时间戳）
+#   56 → TEXT_EMOJI     大 emoji（空状态封面）
+#   22 → TEXT_XXL        超大标题（空状态标题）
+#   20 → TEXT_XL         页面标题（存档/剧本库/设置）
+#   18 → TEXT_LG         对话标题（chat header）
+#   16 → TEXT_ML         avatar 文字、角色卡名
+#   15 → TEXT_ML         卡片标题、分区标题
+#   14 → TEXT_MD         正文（角色名、气泡、卡片标题）
+#   13 → TEXT_SM         辅助文字（场景、状态、segment）
+#   12 → TEXT_SM         辅助文字（标签、元信息）
+#   11 → TEXT_XS         极小（时间戳、提示、描述）
+#   10 → TEXT_XS         极小（徽章、时间戳）
+#
+# 用户可通过设置调整字体大小（small / medium / large），重启后生效。
 
-TEXT_EMOJI = 44
-TEXT_XXL = 18
-TEXT_XL = 16
-TEXT_LG = 14
-TEXT_ML = 13
-TEXT_MD = 11
-TEXT_SM = 10
-TEXT_XS = 9
+# 基础值（对应 medium = 1.0×）
+_TEXT_BASE = {
+    "EMOJI": 44,
+    "XXL": 18,
+    "XL": 16,
+    "LG": 14,
+    "ML": 13,
+    "MD": 11,
+    "SM": 10,
+    "XS": 9,
+}
+
+FONT_SCALE_MAP = {"small": 0.85, "medium": 1.0, "large": 1.15}
+FONT_SCALE_LABELS = {"small": "小", "medium": "中", "large": "大"}
+_DEFAULT_FONT_SCALE_KEY = "medium"
+
+
+def get_font_scale_key() -> str:
+    """返回当前 config 中保存的字体缩放键（small/medium/large）。"""
+    try:
+        return config.app_config.get("ui", {}).get("font_scale", _DEFAULT_FONT_SCALE_KEY)
+    except Exception:
+        return _DEFAULT_FONT_SCALE_KEY
+
+
+def _load_font_scale() -> float:
+    scale_key = get_font_scale_key()
+    return FONT_SCALE_MAP.get(scale_key, 1.0)
+
+
+_font_scale = _load_font_scale()
+
+TEXT_EMOJI = round(_TEXT_BASE["EMOJI"] * _font_scale)
+TEXT_XXL = round(_TEXT_BASE["XXL"] * _font_scale)
+TEXT_XL = round(_TEXT_BASE["XL"] * _font_scale)
+TEXT_LG = round(_TEXT_BASE["LG"] * _font_scale)
+TEXT_ML = round(_TEXT_BASE["ML"] * _font_scale)
+TEXT_MD = round(_TEXT_BASE["MD"] * _font_scale)
+TEXT_SM = round(_TEXT_BASE["SM"] * _font_scale)
+TEXT_XS = round(_TEXT_BASE["XS"] * _font_scale)
 
 # ═══ 当前选中主题（模块级，任意地方 import 即可拿到当前 gradient band）═══
 _current_color_theme_key = "aurora"

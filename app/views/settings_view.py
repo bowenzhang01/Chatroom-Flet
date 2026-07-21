@@ -11,7 +11,7 @@ import flet as ft
 
 import config
 from app.views import ViewBase
-from app.theme import THEME_MODES, COLORS, COLOR_THEMES, rebuild_themes, get_color_theme_key, TEXT_XL, TEXT_ML, TEXT_SM, TEXT_XS
+from app.theme import THEME_MODES, COLORS, COLOR_THEMES, rebuild_themes, get_color_theme_key, TEXT_XL, TEXT_ML, TEXT_SM, TEXT_XS, FONT_SCALE_LABELS, get_font_scale_key
 from services.api_service import test_connection_async, fetch_models_async
 
 __all__ = ["SettingsView"]
@@ -331,6 +331,16 @@ class SettingsView(ViewBase):
             ft.Container(height=8),
             ft.Text("色彩主题", size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT),
             color_theme_dd,
+            ft.Container(height=8),
+            ft.Text("字体大小", size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.SegmentedButton(
+                selected=[get_font_scale_key()],
+                segments=[ft.Segment(value=k, label=ft.Text(v, size=TEXT_SM))
+                          for k, v in FONT_SCALE_LABELS.items()],
+                allow_multiple_selection=False, allow_empty_selection=False,
+                on_change=self._on_font_scale_change,
+            ),
+            ft.Text("调整后重启应用生效", size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT, italic=True),
         ])
 
     def _on_color_theme_change(self, e):
@@ -344,6 +354,15 @@ class SettingsView(ViewBase):
                 self._about_theme_text.value = COLOR_THEMES[key].get("name", key)
                 self._about_theme_text.update()
             self.page.update()
+
+    def _on_font_scale_change(self, e):
+        key = next(iter(e.control.selected), "medium")
+        config.app_config.setdefault("ui", {})["font_scale"] = key
+        try:
+            self.state.data._save_config()
+        except Exception:
+            pass
+        self._snack(f"字体大小已设为「{FONT_SCALE_LABELS.get(key, key)}」，重启应用后生效")
 
     def _on_theme_change(self, e):
         sel = e.control.selected

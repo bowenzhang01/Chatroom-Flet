@@ -6,7 +6,7 @@
 
 import flet as ft
 
-from app.theme import COLORS, RADIUS_PILL
+from app.theme import COLORS, RADIUS_PILL, TEXT_SM
 
 __all__ = ["TransportBar"]
 
@@ -43,8 +43,11 @@ class TransportBar:
             value=self.state.mode if self.state.mode in ("round", "random", "dynamic") else "round",
             options=[ft.dropdown.Option(v, text=l) for l, v in _MODES],
             dense=True,
-            content_padding=ft.Padding.symmetric(horizontal=12, vertical=6),
-            width=110,
+            content_padding=ft.Padding.symmetric(horizontal=8, vertical=4),
+            width=90,
+            text_size=TEXT_SM,
+            border=ft.InputBorder.NONE,
+            trailing_icon=ft.Icon(ft.Icons.ARROW_DROP_DOWN, size=14),
             on_select=self._on_mode_change,
         )
 
