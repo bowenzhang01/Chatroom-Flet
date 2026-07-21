@@ -8,7 +8,7 @@
 
 import flet as ft
 
-from app.theme import char_color_at, RADIUS_PILL
+from app.theme import char_color_at, RADIUS_PILL, TEXT_SM, TEXT_XS
 
 __all__ = ["TurnOrderEditor"]
 
@@ -34,10 +34,10 @@ class TurnOrderEditor:
         return ft.Column(
             controls=[
                 ft.Container(height=4),
-                ft.Text("参与对话", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.ON_SURFACE_VARIANT),
+                ft.Text("参与对话", size=TEXT_SM, weight=ft.FontWeight.W_600, color=ft.Colors.ON_SURFACE_VARIANT),
                 self._active_col,
                 ft.Container(height=4),
-                ft.Text("待命角色（点击加入）", size=12, weight=ft.FontWeight.W_600,
+                ft.Text("待命角色（点击加入）", size=TEXT_SM, weight=ft.FontWeight.W_600,
                         color=ft.Colors.ON_SURFACE_VARIANT),
                 self._standby_row,
             ],
@@ -74,14 +74,14 @@ class TurnOrderEditor:
         order = set(self.state.turn_order)
         standby = [n for n in self.state.characters if n not in order and n != "You"]
         if not standby:
-            self._standby_row.controls = [ft.Text("无", size=11, color=ft.Colors.ON_SURFACE_VARIANT)]
+            self._standby_row.controls = [ft.Text("无", size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT)]
             return
         chips = []
         for n in standby:
             c = self.state.characters[n]
             dname = c.get("display_name", n)
             chips.append(ft.Chip(
-                label=ft.Text(dname, size=12),
+                label=ft.Text(dname, size=TEXT_SM),
                 leading=ft.Icon(ft.Icons.ADD, size=14),
                 on_click=self._make_add(n),
             ))
@@ -121,7 +121,7 @@ class TurnOrderEditor:
                 controls=[
                     ft.Icon(ft.Icons.DRAG_HANDLE, size=18, color=ft.Colors.ON_SURFACE_VARIANT),
                     dot,
-                    ft.Text(dname, size=13, weight=ft.FontWeight.W_500, expand=True,
+                    ft.Text(dname, size=TEXT_SM, weight=ft.FontWeight.W_500, expand=True,
                             max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                     trailing,
                 ],
@@ -158,7 +158,7 @@ class TurnOrderEditor:
             content=ft.Row(
                 controls=[
                     ft.Icon(ft.Icons.LOCK, size=16, color=ft.Colors.ON_SURFACE_VARIANT),
-                    ft.Text("你（用户模式自动加入）", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text("你（用户模式自动加入）", size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT),
                 ],
                 spacing=8,
             ),

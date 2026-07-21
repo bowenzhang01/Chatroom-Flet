@@ -8,7 +8,7 @@ import threading
 
 import flet as ft
 
-from app.theme import RADIUS_CARD
+from app.theme import RADIUS_CARD, TEXT_SM
 
 __all__ = ["SceneBanner"]
 
@@ -25,8 +25,8 @@ class SceneBanner:
         self.root = self._build()
 
     def _build(self) -> ft.Control:
-        self._text = ft.Text("📍 场景切换", size=13, weight=ft.FontWeight.W_700, color=ft.Colors.PRIMARY)
-        self._sub = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=2,
+        self._text = ft.Text("📍 场景切换", size=TEXT_SM, weight=ft.FontWeight.W_700, color=ft.Colors.PRIMARY)
+        self._sub = ft.Text("", size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=2,
                             overflow=ft.TextOverflow.ELLIPSIS)
         card = ft.Container(
             content=ft.Column(

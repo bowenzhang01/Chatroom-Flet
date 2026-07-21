@@ -9,7 +9,7 @@ import threading
 
 import flet as ft
 
-from app.theme import RADIUS_PILL
+from app.theme import RADIUS_PILL, TEXT_XS
 
 __all__ = ["DirectorInput"]
 
@@ -35,7 +35,7 @@ class DirectorInput:
         self.root = self._build()
 
     def _build(self) -> ft.Control:
-        self._hint = ft.Text("", size=11, color=ft.Colors.ON_SURFACE_VARIANT)
+        self._hint = ft.Text("", size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT)
         self._field = ft.TextField(
             hint_text="输入内容…",
             multiline=False,

@@ -32,7 +32,43 @@ __all__ = [
     "RADIUS_BUBBLE",
     "RADIUS_PILL",
     "SPACING",
+    "TEXT_EMOJI",
+    "TEXT_XXL",
+    "TEXT_XL",
+    "TEXT_LG",
+    "TEXT_ML",
+    "TEXT_MD",
+    "TEXT_SM",
+    "TEXT_XS",
 ]
+
+# ═══ 文字尺寸常量 ═══
+# Flet 0.86.0 不支持 textScaleFactor，无法阻止 Android 系统字体缩放。
+# 此处尺寸已较设计值缩小 ~20%，使系统 1.3× 缩放后实际尺寸接近原始设计值。
+# 1.0× 系统缩放下：文字比设计值略小但仍清晰可读。
+# 1.3× 系统缩放下：实际尺寸 ≈ 原始设计值，布局不会被撑破。
+#
+# 映射关系（设计值 → 常量）：
+#   56 → TEXT_EMOJI (44)   大 emoji（空状态封面）
+#   22 → TEXT_XXL  (18)    超大标题（空状态标题）
+#   20 → TEXT_XL   (16)    页面标题（存档/剧本库/设置）
+#   18 → TEXT_LG   (14)    对话标题（chat header）
+#   16 → TEXT_ML   (13)    avatar 文字、角色卡名
+#   15 → TEXT_ML   (13)    卡片标题、分区标题
+#   14 → TEXT_MD   (11)    正文（角色名、气泡、卡片标题）
+#   13 → TEXT_SM   (10)    辅助文字（场景、状态、segment）
+#   12 → TEXT_SM   (10)    辅助文字（标签、元信息）
+#   11 → TEXT_XS   (9)     极小（时间戳、提示、描述）
+#   10 → TEXT_XS   (9)     极小（徽章、时间戳）
+
+TEXT_EMOJI = 44
+TEXT_XXL = 18
+TEXT_XL = 16
+TEXT_LG = 14
+TEXT_ML = 13
+TEXT_MD = 11
+TEXT_SM = 10
+TEXT_XS = 9
 
 # ═══ 当前选中主题（模块级，任意地方 import 即可拿到当前 gradient band）═══
 _current_color_theme_key = "aurora"

@@ -13,7 +13,7 @@ import flet as ft
 
 import config
 from app.views import ViewBase
-from app.theme import RADIUS_CARD
+from app.theme import RADIUS_CARD, TEXT_XL, TEXT_SM, TEXT_ML, TEXT_MD, TEXT_XS
 from app.components.profile_card import gather_profile_meta
 from app.components.progress_dialog import ProgressDialog
 
@@ -46,9 +46,13 @@ class ArchivesView(ViewBase):
             on_change=lambda e: self._render(),
             on_submit=lambda e: self._render(),
         )
+        search_wrap = ft.Container(
+            content=self._search_field,
+            padding=ft.Padding.symmetric(horizontal=16, vertical=4),
+        )
         self._body = ft.Container(expand=True, padding=ft.Padding.all(16))
         self._root = ft.Column(
-            controls=[self._header_container, self._search_field, self._body],
+            controls=[self._header_container, search_wrap, self._body],
             spacing=0,
             expand=True,
         )
@@ -80,9 +84,9 @@ class ArchivesView(ViewBase):
                     ),
                     ft.Column(
                         controls=[
-                            ft.Text("对话存档", size=20, weight=ft.FontWeight.W_700,
+                            ft.Text("对话存档", size=TEXT_XL, weight=ft.FontWeight.W_700,
                                     max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
-                            ft.Text(title, size=12, color=ft.Colors.ON_SURFACE_VARIANT,
+                            ft.Text(title, size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT,
                                     max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                         ],
                         spacing=0, tight=True, expand=True,
@@ -96,9 +100,9 @@ class ArchivesView(ViewBase):
                 controls=[
                     ft.Column(
                         controls=[
-                            ft.Text("对话存档", size=20, weight=ft.FontWeight.W_700,
+                            ft.Text("对话存档", size=TEXT_XL, weight=ft.FontWeight.W_700,
                                     max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
-                            ft.Text("选择剧本查看存档", size=12,
+                            ft.Text("选择剧本查看存档", size=TEXT_SM,
                                     color=ft.Colors.ON_SURFACE_VARIANT,
                                     max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                         ],
@@ -142,12 +146,12 @@ class ArchivesView(ViewBase):
                         ),
                         ft.Column(
                             controls=[
-                                ft.Text(meta["title"], size=15, weight=ft.FontWeight.W_500,
+                                ft.Text(meta["title"], size=TEXT_ML, weight=ft.FontWeight.W_500,
                                         max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                                 ft.Text(
                                     f"{meta['chat_count']} 个存档"
                                     + (" · 当前剧本" if is_active else ""),
-                                    size=12, color=ft.Colors.ON_SURFACE_VARIANT,
+                                    size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT,
                                     max_lines=1, overflow=ft.TextOverflow.ELLIPSIS,
                                 ),
                             ],
@@ -216,8 +220,8 @@ class ArchivesView(ViewBase):
                 controls=[
                     ft.Icon(ft.Icons.FOLDER_OFF_OUTLINED, size=48,
                             color=ft.Colors.ON_SURFACE_VARIANT),
-                    ft.Text(title, size=14, color=ft.Colors.ON_SURFACE_VARIANT),
-                    ft.Text(subtitle, size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text(title, size=TEXT_MD, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text(subtitle, size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -264,7 +268,7 @@ class ArchivesView(ViewBase):
         return ft.Row(
             controls=[
                 ft.Divider(expand=True, height=1),
-                ft.Text(label, size=11, color=ft.Colors.ON_SURFACE_VARIANT,
+                ft.Text(label, size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT,
                         weight=ft.FontWeight.W_500),
                 ft.Divider(expand=True, height=1),
             ],
@@ -283,11 +287,11 @@ class ArchivesView(ViewBase):
                     ft.Icon(ft.Icons.CHAT_BUBBLE_OUTLINE, size=20, color=ft.Colors.PRIMARY),
                     ft.Column(
                         controls=[
-                            ft.Text(title, size=14, weight=ft.FontWeight.W_500, max_lines=1,
+                            ft.Text(title, size=TEXT_MD, weight=ft.FontWeight.W_500, max_lines=1,
                                     overflow=ft.TextOverflow.ELLIPSIS),
-                            ft.Text(preview, size=11, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=1,
+                            ft.Text(preview, size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=1,
                                     overflow=ft.TextOverflow.ELLIPSIS),
-                            ft.Text(f"{count} 条 · {created}", size=10,
+                            ft.Text(f"{count} 条 · {created}", size=TEXT_XS,
                                     color=ft.Colors.ON_SURFACE_VARIANT),
                         ],
                         spacing=2, tight=True, expand=True,
@@ -323,10 +327,10 @@ class ArchivesView(ViewBase):
                         controls=[
                             ft.Row(
                                 controls=[
-                                    ft.Text("自动存档", size=14, weight=ft.FontWeight.W_600,
+                                    ft.Text("自动存档", size=TEXT_MD, weight=ft.FontWeight.W_600,
                                             color=ft.Colors.ON_SECONDARY_CONTAINER),
                                     ft.Container(
-                                        content=ft.Text("⚡", size=10),
+                                        content=ft.Text("⚡", size=TEXT_XS),
                                         padding=ft.Padding.symmetric(horizontal=4, vertical=1),
                                         border_radius=6,
                                         bgcolor=ft.Colors.SECONDARY_CONTAINER,
@@ -334,9 +338,9 @@ class ArchivesView(ViewBase):
                                 ],
                                 spacing=6,
                             ),
-                            ft.Text(preview, size=11, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=1,
+                            ft.Text(preview, size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=1,
                                     overflow=ft.TextOverflow.ELLIPSIS),
-                            ft.Text(f"{count} 条 · 上次未保存", size=10,
+                            ft.Text(f"{count} 条 · 上次未保存", size=TEXT_XS,
                                     color=ft.Colors.ON_SURFACE_VARIANT),
                         ],
                         spacing=2, tight=True, expand=True,

@@ -11,7 +11,7 @@ from pathlib import Path
 import flet as ft
 
 import config
-from app.theme import RADIUS_CARD, profile_gradient, profile_emoji, char_color_at
+from app.theme import RADIUS_CARD, profile_gradient, profile_emoji, char_color_at, TEXT_EMOJI, TEXT_ML, TEXT_XS
 from utils import load_json
 
 __all__ = ["ProfileCard", "gather_profile_meta"]
@@ -58,7 +58,7 @@ class ProfileCard:
         emoji = self.meta["emoji"]
 
         cover = ft.Container(
-            content=ft.Text(emoji, size=44, text_align=ft.TextAlign.CENTER),
+            content=ft.Text(emoji, size=TEXT_EMOJI, text_align=ft.TextAlign.CENTER),
             gradient=profile_gradient(folder, title),
             height=120,
             alignment=ft.Alignment.CENTER,
@@ -99,7 +99,7 @@ class ProfileCard:
 
         title_row = ft.Row(
             controls=[
-                ft.Container(content=ft.Text(title, size=15, weight=ft.FontWeight.W_700,
+                ft.Container(content=ft.Text(title, size=TEXT_ML, weight=ft.FontWeight.W_700,
                                               max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                               expand=True),
                 menu_btn,
@@ -133,7 +133,7 @@ class ProfileCard:
 
     def _badge(self, text: str) -> ft.Control:
         return ft.Container(
-            content=ft.Text(text, size=10, color=ft.Colors.ON_SURFACE_VARIANT),
+            content=ft.Text(text, size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT),
             padding=ft.Padding.symmetric(horizontal=6, vertical=2),
             border_radius=8,
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,

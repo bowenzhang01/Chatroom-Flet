@@ -14,6 +14,7 @@ import asyncio
 
 import flet as ft
 
+from app.theme import TEXT_ML, TEXT_SM
 __all__ = ["ProgressDialog"]
 
 
@@ -65,7 +66,7 @@ class ProgressDialog:
             indeterminate: True=不确定进度条（动画）; False=确定进度条（需手动 set_progress）
             dismissible: True=允许点击遮罩关闭
         """
-        self._status = ft.Text(status, size=13, weight=ft.FontWeight.W_500)
+        self._status = ft.Text(status, size=TEXT_SM, weight=ft.FontWeight.W_500)
         self._progress = ft.ProgressBar(
             value=None if indeterminate else 0.0,
             width=320,
@@ -78,7 +79,7 @@ class ProgressDialog:
                     controls=[
                         ft.Icon(ft.Icons.RADIO_BUTTON_UNCHECKED, size=18,
                                 color=ft.Colors.OUTLINE),
-                        ft.Text(label, size=12),
+                        ft.Text(label, size=TEXT_SM),
                     ],
                     spacing=8,
                 )
@@ -95,7 +96,7 @@ class ProgressDialog:
         content_controls.append(self._close_btn)
 
         self._dialog = ft.AlertDialog(
-            title=ft.Text(self._title, size=16, weight=ft.FontWeight.W_700),
+            title=ft.Text(self._title, size=TEXT_ML, weight=ft.FontWeight.W_700),
             content=ft.Column(controls=content_controls, tight=True, spacing=10),
             actions=[],
             modal=not dismissible,

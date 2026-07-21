@@ -13,7 +13,7 @@ import re
 
 import flet as ft
 
-from app.theme import RADIUS_BUBBLE, RADIUS_PILL
+from app.theme import RADIUS_BUBBLE, RADIUS_PILL, TEXT_SM, TEXT_XS
 
 __all__ = ["make_bubble_row", "make_scene_change_row", "make_random_event_row",
            "render_streaming_text", "strip_streaming_tags"]
@@ -65,7 +65,7 @@ def _render_bubble_text(text: str, max_width: float) -> ft.Column:
         if seg_type == "action":
             controls.append(ft.Text(
                 seg_text,
-                size=13,
+                size=TEXT_SM,
                 italic=True,
                 color=ft.Colors.ON_SURFACE_VARIANT,
                 selectable=True,
@@ -141,7 +141,7 @@ def render_streaming_text(text: str, max_width: float) -> ft.Column:
         if seg_type == "action":
             controls.append(ft.Text(
                 seg_text,
-                size=13,
+                size=TEXT_SM,
                 italic=True,
                 color=ft.Colors.ON_SURFACE_VARIANT,
                 selectable=True,
@@ -174,7 +174,7 @@ def _bubble(content: ft.Control, bgcolor: str, border=None) -> ft.Container:
 
 def _avatar(initial: str, color: str, radius: int = 16) -> ft.CircleAvatar:
     return ft.CircleAvatar(
-        content=ft.Text(initial, size=13, color=ft.Colors.WHITE, weight=ft.FontWeight.W_700),
+        content=ft.Text(initial, size=TEXT_SM, color=ft.Colors.WHITE, weight=ft.FontWeight.W_700),
         bgcolor=color,
         radius=radius,
     )
@@ -225,8 +225,8 @@ def _make_ai_row(entry, state, max_width) -> ft.Control:
     avatar = _avatar(initial, color)
     name_row = ft.Row(
         controls=[
-            ft.Text(dname or name, size=12, weight=ft.FontWeight.W_600, color=color),
-            ft.Text(t, size=10, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Text(dname or name, size=TEXT_SM, weight=ft.FontWeight.W_600, color=color),
+            ft.Text(t, size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT),
         ],
         spacing=6,
     )
@@ -249,8 +249,8 @@ def _make_user_row(entry, max_width) -> ft.Control:
     avatar = _avatar(initial, ft.Colors.PRIMARY)
     name_row = ft.Row(
         controls=[
-            ft.Text(t, size=10, color=ft.Colors.ON_SURFACE_VARIANT),
-            ft.Text(dname, size=12, weight=ft.FontWeight.W_600, color=ft.Colors.PRIMARY),
+            ft.Text(t, size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Text(dname, size=TEXT_SM, weight=ft.FontWeight.W_600, color=ft.Colors.PRIMARY),
         ],
         alignment=ft.MainAxisAlignment.END,
         spacing=6,
@@ -271,9 +271,9 @@ def _make_director_row(entry, max_width) -> ft.Control:
     avatar = _avatar("导", ft.Colors.SECONDARY)
     name_row = ft.Row(
         controls=[
-            ft.Text(t, size=10, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Text(t, size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT),
             _tag("导演", ft.Colors.SECONDARY_CONTAINER, ft.Colors.ON_SECONDARY_CONTAINER),
-            ft.Text("导演", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.SECONDARY),
+            ft.Text("导演", size=TEXT_SM, weight=ft.FontWeight.W_600, color=ft.Colors.SECONDARY),
         ],
         alignment=ft.MainAxisAlignment.END,
         spacing=6,
@@ -298,9 +298,9 @@ def _make_npc_row(entry, max_width) -> ft.Control:
     avatar = _avatar(initial, ft.Colors.SECONDARY)
     name_row = ft.Row(
         controls=[
-            ft.Text(dname, size=12, weight=ft.FontWeight.W_600, color=ft.Colors.SECONDARY),
+            ft.Text(dname, size=TEXT_SM, weight=ft.FontWeight.W_600, color=ft.Colors.SECONDARY),
             _tag("路人", ft.Colors.SECONDARY_CONTAINER, ft.Colors.ON_SECONDARY_CONTAINER),
-            ft.Text(t, size=10, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Text(t, size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT),
         ],
         spacing=6,
     )
@@ -323,13 +323,13 @@ def make_random_event_row(entry, max_width) -> ft.Control:
     divider_row = ft.Row(
         controls=[
             ft.Divider(expand=True, height=1),
-            ft.Text("🎲 随机事件", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Text("🎲 随机事件", size=TEXT_XS, italic=True, color=ft.Colors.ON_SURFACE_VARIANT),
             ft.Divider(expand=True, height=1),
         ],
         spacing=8,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
     )
-    body = ft.Text(text, size=13, italic=True, color=ft.Colors.ON_SURFACE_VARIANT,
+    body = ft.Text(text, size=TEXT_SM, italic=True, color=ft.Colors.ON_SURFACE_VARIANT,
                    text_align=ft.TextAlign.CENTER, width=max_width)
     return ft.Column(
         controls=[divider_row, ft.Container(content=body, alignment=ft.Alignment.CENTER)],
@@ -347,13 +347,13 @@ def make_scene_change_row(scene: dict, max_width) -> ft.Control:
     divider_row = ft.Row(
         controls=[
             ft.Divider(expand=True, height=1),
-            ft.Text(label, size=11, weight=ft.FontWeight.W_600, color=ft.Colors.PRIMARY),
+            ft.Text(label, size=TEXT_XS, weight=ft.FontWeight.W_600, color=ft.Colors.PRIMARY),
             ft.Divider(expand=True, height=1),
         ],
         spacing=8,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
     )
-    body = ft.Text(desc, size=12, color=ft.Colors.ON_SURFACE_VARIANT, text_align=ft.TextAlign.CENTER)
+    body = ft.Text(desc, size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT, text_align=ft.TextAlign.CENTER)
     return ft.Column(
         controls=[divider_row, ft.Container(content=body, alignment=ft.Alignment.CENTER)],
         alignment=ft.MainAxisAlignment.CENTER,

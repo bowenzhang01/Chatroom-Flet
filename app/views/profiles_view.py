@@ -12,7 +12,7 @@ import flet as ft
 
 import config
 from app.views import ViewBase
-from app.theme import RADIUS_CARD
+from app.theme import RADIUS_CARD, TEXT_XL, TEXT_SM, TEXT_ML, TEXT_MD, TEXT_XS
 from app.components.profile_card import ProfileCard, gather_profile_meta
 from app.components.progress_dialog import ProgressDialog
 
@@ -52,14 +52,14 @@ class ProfilesView(ViewBase):
         return ft.Container(
             content=ft.Row(
                 controls=[
-                    ft.Text("剧本库", size=20, weight=ft.FontWeight.W_700),
+                    ft.Text("剧本库", size=TEXT_XL, weight=ft.FontWeight.W_700),
                     ft.Container(expand=True),
                     ft.FilledTonalButton(
                         content=ft.Text("新建"), icon=ft.Icons.ADD,
                         on_click=lambda e: self._new_profile_dialog(),
                     ),
                     ft.FilledButton(
-                        content=ft.Text("✨ AI 创建"), icon=ft.Icons.AUTO_AWESOME,
+                        content=ft.Text("AI 创建"), icon=ft.Icons.AUTO_AWESOME,
                         on_click=lambda e: self._ai_create_dialog(),
                     ),
                 ],
@@ -97,7 +97,7 @@ class ProfilesView(ViewBase):
         if not cards:
             return ft.Container(
                 content=ft.Text("暂无剧本，点击「新建」或「✨ AI 创建」开始",
-                                size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                                size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT),
                 alignment=ft.Alignment.CENTER,
                 expand=True,
             )
@@ -115,7 +115,7 @@ class ProfilesView(ViewBase):
         seg = ft.SegmentedButton(
             selected=[0],
             segments=[
-                ft.Segment(value=i, label=ft.Text(l, size=12))
+                ft.Segment(value=i, label=ft.Text(l, size=TEXT_SM))
                 for i, l in enumerate(["概览", "场景", "角色", "发言"])
             ],
             allow_multiple_selection=False,
@@ -130,7 +130,7 @@ class ProfilesView(ViewBase):
                         controls=[
                             ft.TextButton(content=ft.Text("← 返回"),
                                           on_click=lambda e: self._back_to_list()),
-                            ft.Text(meta["title"], size=20, weight=ft.FontWeight.W_700,
+                            ft.Text(meta["title"], size=TEXT_XL, weight=ft.FontWeight.W_700,
                                     max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
                             ft.FilledButton(content=ft.Text("进入对话"), icon=ft.Icons.PLAY_ARROW,
                                             on_click=lambda e: self._enter_chat(folder)),
@@ -213,13 +213,13 @@ class ProfilesView(ViewBase):
 
         return ft.Column(
             controls=[
-                ft.Text("剧本信息", size=14, weight=ft.FontWeight.W_600),
+                ft.Text("剧本信息", size=TEXT_MD, weight=ft.FontWeight.W_600),
                 title_f,
                 world_f,
                 ft.Row(
                     controls=[
                         ft.FilledButton(content=ft.Text("保存"), icon=ft.Icons.SAVE, on_click=_save),
-                        ft.OutlinedButton(content=ft.Text("✨ AI 推断"), icon=ft.Icons.AUTO_AWESOME, on_click=_ai_infer),
+                        ft.OutlinedButton(content=ft.Text("AI 推断"), icon=ft.Icons.AUTO_AWESOME, on_click=_ai_infer),
                     ],
                     spacing=8,
                 ),
@@ -241,10 +241,10 @@ class ProfilesView(ViewBase):
                         ft.Icon(ft.Icons.DRAG_HANDLE, size=18, color=ft.Colors.ON_SURFACE_VARIANT),
                         ft.Column(
                             controls=[
-                                ft.Text(f"{sc.get('time','')} · {sc.get('location','')}", size=13,
+                                ft.Text(f"{sc.get('time','')} · {sc.get('location','')}", size=TEXT_SM,
                                         weight=ft.FontWeight.W_500, max_lines=1,
                                         overflow=ft.TextOverflow.ELLIPSIS),
-                                ft.Text(sc.get("scene", ""), size=11, color=ft.Colors.ON_SURFACE_VARIANT,
+                                ft.Text(sc.get("scene", ""), size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT,
                                         max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                             ],
                             spacing=0, tight=True, expand=True,
@@ -269,7 +269,7 @@ class ProfilesView(ViewBase):
         header = ft.Row(
             controls=[
                 ft.FilledTonalButton(content=ft.Text("添加场景"), icon=ft.Icons.ADD, on_click=lambda e: self._edit_scene(None)),
-                ft.OutlinedButton(content=ft.Text("✨ AI 生成"), icon=ft.Icons.AUTO_AWESOME,
+                ft.OutlinedButton(content=ft.Text("AI 生成"), icon=ft.Icons.AUTO_AWESOME,
                                   on_click=lambda e: self._ai_generate_scenes()),
             ],
             spacing=8,
@@ -814,7 +814,7 @@ class ProfilesView(ViewBase):
             content=ft.Container(
                 content=ft.Column(
                     controls=[
-                        ft.Text(meta["title"], size=16, weight=ft.FontWeight.W_600),
+                        ft.Text(meta["title"], size=TEXT_ML, weight=ft.FontWeight.W_600),
                         ft.Divider(height=1),
                         ft.ListTile(
                             leading=ft.Icon(ft.Icons.EDIT),
@@ -878,7 +878,7 @@ class ProfilesView(ViewBase):
         dlg = ft.AlertDialog(
             title=ft.Text("新建剧本"),
             content=ft.Column(controls=[field, ft.Text("可稍后在剧本详情中添加角色与场景",
-                                                       size=11, color=ft.Colors.ON_SURFACE_VARIANT)],
+                                                       size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT)],
                              tight=True),
             actions=[
                 ft.TextButton("取消", on_click=lambda e: self._close_dialog()),
@@ -1016,7 +1016,7 @@ class ProfilesView(ViewBase):
                 controls=[
                     desc_f,
                     ft.Text("示例：星际飞船上五名船员的冒险 / 魔法学院室友的日常",
-                            size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+                            size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT),
                 ],
                 tight=True,
             ),
@@ -1183,8 +1183,8 @@ class ProfilesView(ViewBase):
             title=ft.Text("✨ 生成完成"),
             content=ft.Column(
                 controls=[
-                    ft.Text(f"已生成「{title}」", size=14, weight=ft.FontWeight.W_600),
-                    ft.Text(f"{n_chars} 角色 · {n_scenes} 场景", size=12,
+                    ft.Text(f"已生成「{title}」", size=TEXT_MD, weight=ft.FontWeight.W_600),
+                    ft.Text(f"{n_chars} 角色 · {n_scenes} 场景", size=TEXT_SM,
                             color=ft.Colors.ON_SURFACE_VARIANT),
                 ],
                 tight=True,

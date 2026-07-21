@@ -11,7 +11,7 @@ import flet as ft
 
 import config
 from app.views import ViewBase
-from app.theme import THEME_MODES, COLORS, COLOR_THEMES, rebuild_themes, get_color_theme_key
+from app.theme import THEME_MODES, COLORS, COLOR_THEMES, rebuild_themes, get_color_theme_key, TEXT_XL, TEXT_ML, TEXT_SM, TEXT_XS
 from services.api_service import test_connection_async, fetch_models_async
 
 __all__ = ["SettingsView"]
@@ -30,6 +30,8 @@ class SettingsView(ViewBase):
         self._model_dd: ft.Dropdown = None
         self._temp_slider: ft.Slider = None
         self._tokens_slider: ft.Slider = None
+        self._temp_value_text: ft.Text = None
+        self._tokens_value_text: ft.Text = None
         self._test_result: ft.Text = None
         self._test_progress: ft.ProgressRing = None
         self._director_sw: ft.Switch = None
@@ -72,13 +74,13 @@ class SettingsView(ViewBase):
 
     def _build_title(self) -> ft.Control:
         return ft.Container(
-            content=ft.Text("设置", size=20, weight=ft.FontWeight.W_700),
+            content=ft.Text("设置", size=TEXT_XL, weight=ft.FontWeight.W_700),
             padding=ft.Padding.symmetric(horizontal=16, vertical=12),
         )
 
     # ═══ 卡片容器 ═══
     def _card(self, title: str, controls: list) -> ft.Control:
-        head = [ft.Text(title, size=15, weight=ft.FontWeight.W_600)] if title else []
+        head = [ft.Text(title, size=TEXT_ML, weight=ft.FontWeight.W_600)] if title else []
         return ft.Card(
             content=ft.Container(
                 content=ft.Column(
@@ -117,7 +119,7 @@ class SettingsView(ViewBase):
         )
         self._key_source_text = ft.Text(
             "来源: 环境变量" if ksrc == "env" else ("来源: 配置文件" if ksrc == "file" else "未配置"),
-            size=11, color=ft.Colors.ON_SURFACE_VARIANT,
+            size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT,
         )
 
         self._model_dd = ft.Dropdown(
@@ -132,12 +134,18 @@ class SettingsView(ViewBase):
         self._temp_slider = ft.Slider(
             min=0, max=2, divisions=20, value=float(config.TEMPERATURE),
             label="{value}", expand=True,
+            on_change=self._on_temp_slider_change,
         )
+        self._temp_value_text = ft.Text(str(round(config.TEMPERATURE, 2)), size=TEXT_SM,
+                                        width=36, text_align=ft.TextAlign.END)
         self._tokens_slider = ft.Slider(
             min=100, max=4000, divisions=39, value=float(config.MAX_TOKENS),
-            label="{value}",
+            label="{value}", expand=True,
+            on_change=self._on_tokens_slider_change,
         )
-        self._test_result = ft.Text("", size=12)
+        self._tokens_value_text = ft.Text(str(int(config.MAX_TOKENS)), size=TEXT_SM,
+                                          width=48, text_align=ft.TextAlign.END)
+        self._test_result = ft.Text("", size=TEXT_SM)
         self._test_progress = ft.ProgressRing(visible=False, width=20, height=20, stroke_width=2)
 
         # SSL / 代理开关（解决 macOS 企业代理/WSL 代理环境 SSE 流式失败问题）
@@ -206,26 +214,28 @@ class SettingsView(ViewBase):
 
         env_tip = ft.Text(
             "建议通过环境变量 DEEPSEEK_API_KEY 设置 Key，避免明文存储在配置文件中",
-            size=11, color=ft.Colors.ON_SURFACE_VARIANT, italic=True,
+            size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT, italic=True,
         )
         network_tip = ft.Text(
             "若 macOS/WSL 下流式输出卡顿或超时，尝试关闭\"读取系统代理\"。",
-            size=11, color=ft.Colors.ON_SURFACE_VARIANT, italic=True,
+            size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT, italic=True,
         )
         return self._card("", [
-            ft.Row([ft.Text("API 配置", size=15, weight=ft.FontWeight.W_600),
+            ft.Row([ft.Text("API 配置", size=TEXT_ML, weight=ft.FontWeight.W_600),
                     self._api_status_dot,
-                    ft.Text("已连接" if connected else "未配置", size=11,
+                    ft.Text("已连接" if connected else "未配置", size=TEXT_XS,
                             color=ft.Colors.ON_SURFACE_VARIANT)], spacing=8),
             self._base_field,
             self._key_field,
             self._key_source_text,
             ft.Row([self._model_dd, refresh_btn], spacing=8,
                    vertical_alignment=ft.CrossAxisAlignment.CENTER),
-            ft.Text("温度", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-            self._temp_slider,
-            ft.Text("最大 tokens", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-            self._tokens_slider,
+            ft.Text("温度", size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Row([self._temp_slider, self._temp_value_text], spacing=8,
+                   vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ft.Text("最大 tokens", size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Row([self._tokens_slider, self._tokens_value_text], spacing=8,
+                   vertical_alignment=ft.CrossAxisAlignment.CENTER),
             ft.Row([self._test_progress, self._test_result], spacing=8,
                    vertical_alignment=ft.CrossAxisAlignment.CENTER),
             ft.Row([
@@ -234,7 +244,7 @@ class SettingsView(ViewBase):
             ], spacing=8),
             env_tip,
             ft.Divider(height=1),
-            ft.Text("网络", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Text("网络", size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT),
             self._ssl_sw,
             self._proxy_sw,
             network_tip,
@@ -255,6 +265,24 @@ class SettingsView(ViewBase):
             f"SSL 校验：{'开' if config.API_VERIFY_SSL else '关'} · "
             f"系统代理：{'开' if config.API_TRUST_ENV else '关'}（下次请求生效）"
         )
+
+    def _on_temp_slider_change(self, e):
+        """温度滑块拖动时实时显示数值。"""
+        config.TEMPERATURE = float(self._temp_slider.value)
+        if self._temp_value_text:
+            self._temp_value_text.value = str(round(config.TEMPERATURE, 2))
+            self._temp_value_text.update()
+        self._temp_slider.label = str(round(config.TEMPERATURE, 2))
+        self._temp_slider.update()
+
+    def _on_tokens_slider_change(self, e):
+        """tokens 滑块拖动时实时显示数值。"""
+        config.MAX_TOKENS = int(self._tokens_slider.value)
+        if self._tokens_value_text:
+            self._tokens_value_text.value = str(config.MAX_TOKENS)
+            self._tokens_value_text.update()
+        self._tokens_slider.label = str(int(self._tokens_slider.value))
+        self._tokens_slider.update()
 
     def _fetch_models(self, base, key):
         self._model_dd.options = []
@@ -280,7 +308,7 @@ class SettingsView(ViewBase):
     def _build_appearance_card(self) -> ft.Control:
         seg = ft.SegmentedButton(
             selected=[self.ui.theme_mode_key],
-            segments=[ft.Segment(value=k, label=ft.Text(v, size=12)) for k, v in _THEME_LABELS.items()],
+            segments=[ft.Segment(value=k, label=ft.Text(v, size=TEXT_SM)) for k, v in _THEME_LABELS.items()],
             allow_multiple_selection=False, allow_empty_selection=False,
             on_change=self._on_theme_change,
         )
@@ -298,10 +326,10 @@ class SettingsView(ViewBase):
         self._color_theme_dd = color_theme_dd
 
         return self._card("外观", [
-            ft.Text("主题模式", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Text("主题模式", size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT),
             seg,
             ft.Container(height=8),
-            ft.Text("色彩主题", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Text("色彩主题", size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT),
             color_theme_dd,
         ])
 
@@ -383,9 +411,9 @@ class SettingsView(ViewBase):
             ft.Container(height=4),
             self._streaming_sw,
             ft.Container(height=4),
-            ft.Text("发言模式", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Text("发言模式", size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT),
             self._mode_dd,
-            ft.Text("速度", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Text("速度", size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT),
             self._speed_dd,
         ])
 
@@ -416,17 +444,17 @@ class SettingsView(ViewBase):
     # ═══ 关于 ═══
     def _build_about_card(self) -> ft.Control:
         theme_name = COLOR_THEMES.get(get_color_theme_key(), {}).get("name", "极光")
-        self._about_theme_text = ft.Text(theme_name, size=12)
+        self._about_theme_text = ft.Text(theme_name, size=TEXT_SM)
         return self._card("关于", [
-            ft.Row([ft.Text("版本", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-                    ft.Text(_VERSION, size=12)], spacing=12),
-            ft.Row([ft.Text("框架", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-                    ft.Text("Flet 0.86.0", size=12)], spacing=12),
-            ft.Row([ft.Text("主题", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Row([ft.Text("版本", size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text(_VERSION, size=TEXT_SM)], spacing=12),
+            ft.Row([ft.Text("框架", size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text("Flet 0.86.0", size=TEXT_SM)], spacing=12),
+            ft.Row([ft.Text("主题", size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT),
                     self._about_theme_text], spacing=12),
             ft.Container(height=4),
-            ft.Text("问题反馈：请在项目仓库提交 Issue", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
-            ft.Text("许可证：MIT", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Text("问题反馈：请在项目仓库提交 Issue", size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Text("许可证：MIT", size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT),
         ])
 
     # ═══ 工具 ═══
@@ -501,6 +529,10 @@ class SettingsView(ViewBase):
             self._temp_slider.value = float(config.TEMPERATURE)
         if self._tokens_slider:
             self._tokens_slider.value = float(config.MAX_TOKENS)
+        if self._temp_value_text:
+            self._temp_value_text.value = str(round(config.TEMPERATURE, 2))
+        if self._tokens_value_text:
+            self._tokens_value_text.value = str(int(config.MAX_TOKENS))
         if self._ssl_sw:
             self._ssl_sw.value = config.API_VERIFY_SSL
         if self._proxy_sw:

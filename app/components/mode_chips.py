@@ -6,7 +6,7 @@
 
 import flet as ft
 
-from app.theme import RADIUS_PILL
+from app.theme import RADIUS_PILL, TEXT_SM
 
 __all__ = ["ModeChips"]
 
@@ -43,7 +43,7 @@ class ModeChips:
     def _make_chip(self, label, attr, key, icon) -> ft.Chip:
         selected = bool(getattr(self.state, attr, False))
         chip = ft.Chip(
-            label=ft.Text(label, size=13, weight=ft.FontWeight.W_500),
+            label=ft.Text(label, size=TEXT_SM, weight=ft.FontWeight.W_500),
             selected=selected,
             leading=ft.Icon(icon, size=16),
             show_checkmark=False,

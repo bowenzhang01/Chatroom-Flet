@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """ChatRoom - Flet Edition · 聊天视图（主界面）
    组合：Header(剧本名·场景▾) + ModeChips + 内容区(空状态/气泡列表)
          + SceneBanner + 回到底部按钮 + TransportBar(含状态) + DirectorInput
@@ -11,7 +11,7 @@ import flet as ft
 
 import config
 from app.views import ViewBase
-from app.theme import RADIUS_PILL, profile_emoji, char_color_at
+from app.theme import RADIUS_PILL, profile_emoji, char_color_at, TEXT_SM, TEXT_XXL, TEXT_LG, TEXT_MD, TEXT_XS, TEXT_EMOJI
 from app.components.mode_chips import ModeChips
 from app.components.transport_bar import TransportBar
 from app.components.chat_bubble import make_bubble_row, make_scene_change_row, render_streaming_text, _md
@@ -70,9 +70,9 @@ class ChatView(ViewBase):
             width=8, height=8, border_radius=4,
             bgcolor=ft.Colors.OUTLINE,
         )
-        self._status_text = ft.Text("就绪", size=12, color=ft.Colors.ON_SURFACE_VARIANT,
+        self._status_text = ft.Text("就绪", size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT,
                                     max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True)
-        self._count_text = ft.Text("0 条", size=12, color=ft.Colors.ON_SURFACE_VARIANT,
+        self._count_text = ft.Text("0 条", size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT,
                                    max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
 
         self._transport = TransportBar(
@@ -143,12 +143,12 @@ class ChatView(ViewBase):
     # ── Header ──
     def _build_header(self) -> ft.Control:
         self._title_text = ft.Text(
-            self.state.title, size=18, weight=ft.FontWeight.W_700, max_lines=1,
+            self.state.title, size=TEXT_LG, weight=ft.FontWeight.W_700, max_lines=1,
             overflow=ft.TextOverflow.ELLIPSIS,
             expand=True,
         )
         self._scene_text = ft.Text(
-            self._scene_label(), size=13, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=1,
+            self._scene_label(), size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=1,
             overflow=ft.TextOverflow.ELLIPSIS,
         )
         title_btn = ft.PopupMenuButton(
@@ -306,10 +306,10 @@ class ChatView(ViewBase):
     def _build_empty_state(self) -> ft.Control:
         folder = config.app_config.get("active_profile", "")
         emoji = profile_emoji(folder, self.state.title)
-        title = ft.Text(self.state.title, size=22, weight=ft.FontWeight.W_700,
+        title = ft.Text(self.state.title, size=TEXT_XXL, weight=ft.FontWeight.W_700,
                         text_align=ft.TextAlign.CENTER, max_lines=2,
                         overflow=ft.TextOverflow.ELLIPSIS)
-        subtitle = ft.Text("对话尚未开始", size=13, color=ft.Colors.ON_SURFACE_VARIANT)
+        subtitle = ft.Text("对话尚未开始", size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT)
         avatars = self._build_character_avatars()
         start_btn = ft.FilledButton(
             content=ft.Text("开始对话"),
@@ -319,7 +319,7 @@ class ChatView(ViewBase):
 
         self._empty_title = title
         self._empty_avatars = avatars
-        self._empty_emoji_text = ft.Text(emoji, size=56, text_align=ft.TextAlign.CENTER)
+        self._empty_emoji_text = ft.Text(emoji, size=TEXT_EMOJI, text_align=ft.TextAlign.CENTER)
 
         col = ft.Column(
             controls=[
@@ -348,7 +348,7 @@ class ChatView(ViewBase):
     def _build_character_avatars(self) -> ft.Control:
         chars = [c for n, c in self.state.characters.items()]
         if not chars:
-            return ft.Text("暂无角色", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
+            return ft.Text("暂无角色", size=TEXT_SM, color=ft.Colors.ON_SURFACE_VARIANT)
         total = len(chars)
         avatars = []
         for i, c in enumerate(chars):
@@ -358,11 +358,11 @@ class ChatView(ViewBase):
             avatars.append(ft.Column(
                 controls=[
                     ft.CircleAvatar(
-                        content=ft.Text(initial, size=14, color=ft.Colors.WHITE, weight=ft.FontWeight.W_700),
+                        content=ft.Text(initial, size=TEXT_MD, color=ft.Colors.WHITE, weight=ft.FontWeight.W_700),
                         bgcolor=color,
                         radius=16,
                     ),
-                    ft.Text(dname, size=11, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=1),
+                    ft.Text(dname, size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=1),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -379,7 +379,7 @@ class ChatView(ViewBase):
         return ft.Row(
             controls=[
                 ft.Container(expand=True, content=ft.Divider(height=1)),
-                ft.Text("参与角色", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+                ft.Text("参与角色", size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT),
                 ft.Container(expand=True, content=ft.Divider(height=1)),
             ],
             alignment=ft.MainAxisAlignment.CENTER,
@@ -475,7 +475,7 @@ class ChatView(ViewBase):
             controls.append(ft.ListTile(
                 leading=ft.Icon(ft.Icons.PLACE_OUTLINED),
                 title=ft.Text(f"{sc.get('time', '')} · {sc.get('location', '')}"),
-                subtitle=ft.Text(sc.get("mood", ""), size=11),
+                subtitle=ft.Text(sc.get("mood", ""), size=TEXT_XS),
                 on_click=self._make_scene_pick_handler(i),
             ))
         dlg = ft.AlertDialog(

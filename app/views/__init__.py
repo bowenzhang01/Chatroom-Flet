@@ -8,6 +8,8 @@
 import time
 import flet as ft
 
+from app.theme import TEXT_ML, TEXT_SM
+
 __all__ = ["ViewBase"]
 
 
@@ -26,7 +28,7 @@ class ViewBase:
     def build(self) -> ft.Control:
         return ft.Container(
             alignment=ft.Alignment.CENTER,
-            content=ft.Text("未实现", size=16),
+            content=ft.Text("未实现", size=TEXT_ML),
             expand=True,
         )
 
@@ -65,7 +67,7 @@ class ViewBase:
                 except Exception:
                     pass
             sb = ft.SnackBar(
-                content=ft.Text(msg, size=13),
+                content=ft.Text(msg, size=TEXT_SM),
                 duration=duration,
                 show_close_icon=True,
             )

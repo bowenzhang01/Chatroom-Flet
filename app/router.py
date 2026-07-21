@@ -71,6 +71,7 @@ class AppRouter:
             on_change=self._on_rail_change,
         )
         self._content = ft.Container(expand=True, padding=0)
+        self.page.appbar = None  # 桌面模式不需要 AppBar（Rail 自带布局）
         self._root = ft.Row(
             controls=[self._rail, ft.VerticalDivider(width=1), self._content],
             spacing=0,
@@ -79,6 +80,13 @@ class AppRouter:
 
     # ── 手机：内容 + 底部 NavigationBar（视图自带顶部 header）──
     def _build_mobile(self):
+        # 顶部状态栏/刘海避让：用 page.appbar(toolbar_height=0) 让 Scaffold 自动处理
+        # AppBar 只占据状态栏高度，toolbar_height=0 不显示工具栏，bgcolor 与 header 一致消除视觉断层
+        # 不用 ft.SafeArea —— Flet 0.86.0 Android 上 SafeArea 会触发 Flutter 布局死循环灰屏
+        self.page.appbar = ft.AppBar(
+            toolbar_height=0,
+            bgcolor=ft.Colors.SURFACE,
+        )
         self._content = ft.Container(expand=True, padding=0)
         self._navbar = ft.NavigationBar(
             selected_index=0,

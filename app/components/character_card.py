@@ -6,7 +6,7 @@
 
 import flet as ft
 
-from app.theme import char_color_at, RADIUS_CARD
+from app.theme import char_color_at, RADIUS_CARD, TEXT_ML, TEXT_MD, TEXT_SM, TEXT_XS
 
 __all__ = ["CharacterCard", "AddCharacterCard", "AIGenerateCharacterCard"]
 
@@ -33,7 +33,7 @@ class CharacterCard:
         is_you = name == "You"
 
         avatar = ft.CircleAvatar(
-            content=ft.Text(initial, size=16, color=ft.Colors.WHITE, weight=ft.FontWeight.W_700),
+            content=ft.Text(initial, size=TEXT_ML, color=ft.Colors.WHITE, weight=ft.FontWeight.W_700),
             bgcolor=color, radius=20,
         )
         if is_you:
@@ -56,9 +56,9 @@ class CharacterCard:
             avatar,
             ft.Column(
                 controls=[
-                    ft.Text(dname, size=14, weight=ft.FontWeight.W_600, max_lines=1,
+                    ft.Text(dname, size=TEXT_MD, weight=ft.FontWeight.W_600, max_lines=1,
                             overflow=ft.TextOverflow.ELLIPSIS),
-                    ft.Text(en, size=11, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=1),
+                    ft.Text(en, size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=1),
                 ],
                 spacing=0, tight=True,
             ),
@@ -66,7 +66,7 @@ class CharacterCard:
         if is_you:
             header_controls.append(
                 ft.Container(
-                    content=ft.Text("👤 你", size=10, color=ft.Colors.PRIMARY),
+                    content=ft.Text("👤 你", size=TEXT_XS, color=ft.Colors.PRIMARY),
                     padding=ft.Padding.symmetric(horizontal=6, vertical=2),
                     border_radius=8,
                     bgcolor=ft.Colors.PRIMARY_CONTAINER,
@@ -81,16 +81,20 @@ class CharacterCard:
                             controls=header_controls,
                             spacing=10,
                         ),
-                        ft.Text(desc, size=11, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=2,
+                        ft.Text(desc, size=TEXT_XS, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=2,
                                 overflow=ft.TextOverflow.ELLIPSIS),
                         ft.Row(
                             controls=[
-                                ft.TextButton(content=ft.Text("✨ 补全"), icon=ft.Icons.AUTO_AWESOME,
-                                              on_click=lambda e: self._ai()),
-                                ft.Container(expand=True),
+                                ft.TextButton(
+                                    content=ft.Text("补全"),
+                                    icon=ft.Icons.AUTO_AWESOME,
+                                    style=ft.ButtonStyle(padding=ft.Padding.symmetric(horizontal=8, vertical=4)),
+                                    on_click=lambda e: self._ai(),
+                                ),
                                 menu_btn,
                             ],
-                            spacing=4,
+                            spacing=0,
+                            wrap=False,
                         ),
                     ],
                     spacing=6,
@@ -133,7 +137,7 @@ class AddCharacterCard:
                 content=ft.Column(
                     controls=[
                         ft.Icon(ft.Icons.PERSON_ADD, size=28, color=ft.Colors.PRIMARY),
-                        ft.Text("新角色", size=13, weight=ft.FontWeight.W_500),
+                        ft.Text("新角色", size=TEXT_SM, weight=ft.FontWeight.W_500),
                     ],
                     alignment=ft.MainAxisAlignment.CENTER,
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -168,7 +172,7 @@ class AIGenerateCharacterCard:
                 content=ft.Column(
                     controls=[
                         ft.Icon(ft.Icons.AUTO_AWESOME, size=28, color=ft.Colors.SECONDARY),
-                        ft.Text("AI 生成", size=13, weight=ft.FontWeight.W_500),
+                        ft.Text("AI 生成", size=TEXT_SM, weight=ft.FontWeight.W_500),
                     ],
                     alignment=ft.MainAxisAlignment.CENTER,
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
